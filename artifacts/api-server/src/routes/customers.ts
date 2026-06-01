@@ -32,10 +32,44 @@ async function checkNamePhoneUniqueness(
 
 async function checkMemberUniqueness(
   members: { name: string; phone?: string }[],
+  mainName: string,
+  mainPhone: string,
   excludeId?: string
 ): Promise<string | null> {
   const excl = excludeId ? { _id: { $ne: excludeId } } : {};
 
+  // Check each member against the main customer's own name/phone
+  for (const m of members) {
+    if (!m.name) continue;
+    const mName = m.name.trim();
+    const mPhone = (m.phone || "").trim();
+
+    if (mName.toLowerCase() === mainName.toLowerCase()) {
+      return `Family member "${mName}" has the same name as the main customer.`;
+    }
+    if (mPhone && mPhone === mainPhone) {
+      return `Family member "${mName}" has the same phone number as the main customer.`;
+    }
+  }
+
+  // Check members against each other (within the same submission)
+  for (let i = 0; i < members.length; i++) {
+    for (let j = i + 1; j < members.length; j++) {
+      const a = members[i];
+      const b = members[j];
+      if (!a.name || !b.name) continue;
+      if (a.name.trim().toLowerCase() === b.name.trim().toLowerCase()) {
+        return `Two family members have the same name "${a.name.trim()}".`;
+      }
+      const aPhone = (a.phone || "").trim();
+      const bPhone = (b.phone || "").trim();
+      if (aPhone && bPhone && aPhone === bPhone) {
+        return `Family members "${a.name.trim()}" and "${b.name.trim()}" have the same phone number.`;
+      }
+    }
+  }
+
+  // Check each member against existing DB records
   for (const m of members) {
     if (!m.name) continue;
     const mName = m.name.trim();
@@ -100,7 +134,7 @@ router.post("/customers", async (req, res) => {
   if (mainError) return res.status(409).json({ error: mainError });
 
   const members: { name: string; phone?: string }[] = familyMembers || [];
-  const memberError = await checkMemberUniqueness(members);
+  const memberError = await checkMemberUniqueness(members, trimmedName, trimmedPhone);
   if (memberError) return res.status(409).json({ error: memberError });
 
   const customer = await Customer.create({ name: trimmedName, phone: trimmedPhone, email, dob, anniversary, notes, gender, familyMembers: members });
@@ -112,15 +146,16 @@ router.patch("/customers/:customerId", async (req, res) => {
   const { customerId } = req.params;
   const { name, phone, dob, anniversary, notes, email, gender, familyMembers } = req.body;
 
-  if (name || phone) {
-    const trimmedName = (name || "").trim();
-    const trimmedPhone = (phone || "").trim();
+  const trimmedName = (name || "").trim();
+  const trimmedPhone = (phone || "").trim();
+
+  if (trimmedName || trimmedPhone) {
     const mainError = await checkNamePhoneUniqueness(trimmedName, trimmedPhone, customerId);
     if (mainError) return res.status(409).json({ error: mainError });
   }
 
   if (familyMembers !== undefined) {
-    const memberError = await checkMemberUniqueness(familyMembers, customerId);
+    const memberError = await checkMemberUniqueness(familyMembers, trimmedName, trimmedPhone, customerId);
     if (memberError) return res.status(409).json({ error: memberError });
   }
 
