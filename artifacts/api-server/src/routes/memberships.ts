@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { addMonths, format, parseISO, isAfter } from "date-fns";
+import { addMonths, subDays, format, parseISO, isAfter } from "date-fns";
 import { Membership, CustomerMembership, Customer } from "../models/index.js";
 
 const router = Router();
@@ -66,7 +66,7 @@ router.post("/customer-memberships", async (req, res) => {
   );
 
   const start = startDate ? parseISO(startDate) : new Date();
-  const end = addMonths(start, membership.duration);
+  const end = subDays(addMonths(start, membership.duration), 1);
 
   const cm = await CustomerMembership.create({
     customerId: customerId.toString(),
