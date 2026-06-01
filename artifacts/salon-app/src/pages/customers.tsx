@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
-import { useListCustomers, useCreateCustomer } from "@workspace/api-client-react";
-import { Search, Plus, User, Phone, Calendar, Eye, Pencil, Trash2, X, Scissors, Package, FileText, BadgeCheck, Users, ChevronDown, ChevronUp } from "lucide-react";
+import { useListCustomers, useCreateCustomer, useListMemberships } from "@workspace/api-client-react";
+import { Search, Plus, User, Phone, Calendar, Eye, Pencil, Trash2, X, Scissors, Package, FileText, BadgeCheck, Users, ChevronDown, ChevronUp, Crown } from "lucide-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -56,11 +56,14 @@ export default function Customers() {
 
   const { data, isLoading, refetch } = useListCustomers({ search });
   const createCustomer = useCreateCustomer();
+  const { data: membershipData } = useListMemberships();
   const { toast } = useToast();
+
+  const membershipPlans: any[] = (membershipData as any)?.memberships || [];
 
   const [showAdd, setShowAdd] = useState(false);
   const [phoneError, setPhoneError] = useState("");
-  const [formData, setFormData] = useState({ name: "", phone: "", dob: "", anniversary: "", gender: "", familyMembers: [] as FamilyMember[] });
+  const [formData, setFormData] = useState({ name: "", phone: "", dob: "", anniversary: "", gender: "", familyMembers: [] as FamilyMember[], membershipId: "" });
   const [showFamilySection, setShowFamilySection] = useState(false);
 
   const [viewCustomerId, setViewCustomerId] = useState<string | null>(null);
@@ -102,16 +105,30 @@ export default function Customers() {
     setPhoneError(""); return true;
   };
 
+  const resetAddForm = () => {
+    setFormData({ name: "", phone: "", dob: "", anniversary: "", gender: "", familyMembers: [], membershipId: "" });
+    setPhoneError("");
+    setShowFamilySection(false);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validatePhone(formData.phone)) return;
     createCustomer.mutate({ data: { ...formData, email: "" } as any }, {
-      onSuccess: () => {
+      onSuccess: async (created: any) => {
+        const customerId = created?.id || created?._id;
+        if (formData.membershipId && customerId) {
+          try {
+            await fetch(`${API_BASE}/customer-memberships`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ customerId, membershipId: formData.membershipId, startDate: format(new Date(), "yyyy-MM-dd") }),
+            });
+          } catch {}
+        }
         toast({ title: "Customer Added", description: `${formData.name} has been registered.` });
         setShowAdd(false);
-        setFormData({ name: "", phone: "", dob: "", anniversary: "", gender: "", familyMembers: [] });
-        setPhoneError("");
-        setShowFamilySection(false);
+        resetAddForm();
         refetch();
       },
       onError: () => toast({ title: "Error", description: "Failed to add customer.", variant: "destructive" }),
@@ -363,7 +380,7 @@ export default function Customers() {
           <div className="bg-card rounded-3xl w-full max-w-lg shadow-2xl max-h-[92vh] flex flex-col">
             <div className="flex items-center justify-between px-8 pt-8 pb-4 shrink-0">
               <h2 className="text-2xl font-serif font-bold text-primary">New Customer</h2>
-              <button onClick={() => { setShowAdd(false); setPhoneError(""); setShowFamilySection(false); setFormData({ name: "", phone: "", dob: "", anniversary: "", gender: "", familyMembers: [] }); }} className="p-2 rounded-lg hover:bg-muted transition-colors">
+              <button onClick={() => { setShowAdd(false); resetAddForm(); }} className="p-2 rounded-lg hover:bg-muted transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -405,7 +422,39 @@ export default function Customers() {
                   value={formData.anniversary} onChange={e => setFormData({ ...formData, anniversary: e.target.value })} />
               </div>
 
-              {/* Family Members Toggle */}
+              {/* Membership */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5 text-muted-foreground">Membership <span className="text-muted-foreground/60 font-normal">(optional)</span></label>
+                <div className="relative">
+                  <Crown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500 pointer-events-none" />
+                  <select
+                    className="w-full pl-9 pr-4 py-3 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none appearance-none text-sm"
+                    value={formData.membershipId}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setFormData(f => ({ ...f, membershipId: val, familyMembers: val ? f.familyMembers : [], }));
+                      if (!val) setShowFamilySection(false);
+                    }}
+                  >
+                    <option value="">— No membership —</option>
+                    {membershipPlans.map((m: any) => (
+                      <option key={m.id || m._id} value={m.id || m._id}>
+                        {m.name} — ₹{m.price?.toLocaleString()} / {m.duration} mo
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                </div>
+                {formData.membershipId && (
+                  <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
+                    <Crown className="w-3 h-3" />
+                    Membership will be activated from today
+                  </p>
+                )}
+              </div>
+
+              {/* Family Members Toggle — only when membership is assigned */}
+              {formData.membershipId && (
               <div className="pt-1">
                 <button type="button"
                   onClick={() => {
@@ -418,6 +467,7 @@ export default function Customers() {
                   {showFamilySection ? <ChevronUp className="w-4 h-4 ml-auto" /> : <ChevronDown className="w-4 h-4 ml-auto" />}
                 </button>
               </div>
+              )}
 
               {/* Family Members Section */}
               {showFamilySection && (
@@ -477,7 +527,7 @@ export default function Customers() {
               )}
 
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => { setShowAdd(false); setPhoneError(""); setShowFamilySection(false); setFormData({ name: "", phone: "", dob: "", anniversary: "", gender: "", familyMembers: [] }); }}
+                <button type="button" onClick={() => { setShowAdd(false); resetAddForm(); }}
                   className="flex-1 py-3 rounded-xl border hover:bg-muted font-medium transition-colors">Cancel</button>
                 <button type="submit" disabled={createCustomer.isPending}
                   className="flex-1 py-3 rounded-xl bg-primary text-white font-medium hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 disabled:opacity-50">
