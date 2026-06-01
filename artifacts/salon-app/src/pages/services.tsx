@@ -293,7 +293,7 @@ function ServiceModal({
           {/* Member pricing hint when variants exist */}
           {safeTypes.length > 0 && (
             <p className="text-xs text-muted-foreground bg-muted/40 rounded-xl p-3 border border-border/40">
-              Each type variant has its own price and member discount above.
+              Pricing is set per type variant above — no separate base price needed.
             </p>
           )}
 
