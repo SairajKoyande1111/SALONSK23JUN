@@ -171,12 +171,10 @@ function ServiceModal({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <SearchableDropdown label="Category *" options={allCategories} value={form.category}
-              onSelect={v => setForm(f => ({ ...f, category: v }))} placeholder="Search category..." />
-            <SearchableDropdown label="Type" options={allTypes} value={form.type}
-              onSelect={v => setForm(f => ({ ...f, type: v }))} placeholder="e.g. Basic, Premium..." />
-          </div>
+          <SearchableDropdown label="Category *" options={allCategories} value={form.category}
+            onSelect={v => setForm(f => ({ ...f, category: v }))} placeholder="Search category..." />
+          <SearchableDropdown label="Type" options={allTypes} value={form.type}
+            onSelect={v => setForm(f => ({ ...f, type: v }))} placeholder="e.g. Basic, Premium..." />
 
           <div>
             <label className="block text-sm font-medium mb-1.5">Price (₹) *</label>
