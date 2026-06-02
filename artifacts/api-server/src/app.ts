@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import path from "path";
+import http from "http";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 import { connectMongo } from "./lib/mongodb.js";
@@ -44,6 +45,33 @@ if (process.env.NODE_ENV === "production") {
   app.use(express.static(staticPath));
   app.get("/{*path}", (_req, res) => {
     res.sendFile(path.join(staticPath, "index.html"));
+  });
+} else {
+  // In development, proxy all non-API requests to the Vite dev server on port 5000.
+  // This is needed because Replit's artifact router sends main-domain traffic to
+  // this API server (port 8080) instead of the Vite server (port 5000).
+  app.use((req, res) => {
+    const options = {
+      hostname: "localhost",
+      port: 5000,
+      path: req.url,
+      method: req.method,
+      headers: {
+        ...req.headers,
+        host: `localhost:5000`,
+      },
+    };
+
+    const proxyReq = http.request(options, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
+      proxyRes.pipe(res, { end: true });
+    });
+
+    proxyReq.on("error", () => {
+      res.status(503).send("Frontend dev server not ready yet — please refresh.");
+    });
+
+    req.pipe(proxyReq, { end: true });
   });
 }
 

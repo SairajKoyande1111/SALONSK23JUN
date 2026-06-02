@@ -1,2 +1,3 @@
 - [Backend PORT fix](backend-port-fix.md) — api-server crashes on start if PORT env var not set; fixed to default to 8080.
 - [Artifact workflow conflict](artifact-workflow-conflict.md) — "artifacts/api-server: API Server" is Replit-managed and cannot be overridden; create a separate "API Server" workflow instead.
+- [Artifact routing fix](artifact-routing-fix.md) — [[artifacts]] in .replit causes artifact router to send main-domain traffic to api-server (502); fix by adding a dev-mode reverse proxy in app.ts to forward non-/api requests to port 5000.
