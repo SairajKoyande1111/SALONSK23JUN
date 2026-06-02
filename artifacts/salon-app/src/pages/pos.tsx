@@ -185,6 +185,7 @@ export default function POS() {
   const getItemTotal   = (item: CartItem) => Math.max(0, item.price * item.quantity - (item.discountAmt || 0));
 
   const subtotal             = cart.reduce((a, i) => a + getItemTotal(i), 0);
+  const totalItemDiscount    = cart.reduce((a, i) => a + (i.discountAmt || 0), 0);
   const globalDiscountAmount = Math.min(globalDiscountAmt, subtotal);
   const afterDiscount        = Math.max(0, subtotal - globalDiscountAmount);
   const taxAmount            = (afterDiscount * taxPercent) / 100;
@@ -266,6 +267,7 @@ export default function POS() {
       customerId: customerId || null, customerName: customerName || "Walk-in Customer", customerPhone: customerPhone || "",
       items: cart.map(i => ({ type: i.type, itemId: i.itemId, name: i.name, staffId: i.staffId || null, staffName: i.staffName || null, price: i.price, quantity: i.quantity, discount: i.discountAmt, total: getItemTotal(i) })),
       subtotal, taxPercent, taxAmount, paymentMethod, discountAmount: globalDiscountAmount, finalAmount, status: "paid",
+      notes: specialLabel || "",
     } as any }, {
       onSuccess: (bill: any) => {
         toast({ title: "✓ Bill Generated!", description: `${(bill as any).billNumber} — ₹${finalAmount.toLocaleString("en-IN")}` });
@@ -579,10 +581,27 @@ export default function POS() {
         {/* Bill summary */}
         <div className="shrink-0 border-t border-sidebar-border">
           <div className="px-4 pt-4 pb-2 space-y-2.5">
-            <div className="flex justify-between text-sm">
-              <span className="text-white">Subtotal ({cart.length} item{cart.length !== 1 ? "s" : ""})</span>
-              <span className="font-semibold text-white">₹{subtotal.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
-            </div>
+            {specialLabel && totalItemDiscount > 0 ? (
+              <>
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/70">Gross ({cart.length} item{cart.length !== 1 ? "s" : ""})</span>
+                  <span className="font-semibold text-white/70">₹{(subtotal + totalItemDiscount).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div className="flex justify-between text-sm items-center">
+                  <span className="text-amber-300 font-semibold">{specialLabel.replace(/ — \d+% off!/, "")} Discount</span>
+                  <span className="font-bold text-amber-300">−₹{totalItemDiscount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-white">Subtotal</span>
+                  <span className="font-semibold text-white">₹{subtotal.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-between text-sm">
+                <span className="text-white">Subtotal ({cart.length} item{cart.length !== 1 ? "s" : ""})</span>
+                <span className="font-semibold text-white">₹{subtotal.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <span className="text-sm flex items-center gap-1 shrink-0 text-white">
                 <Tag className="w-3.5 h-3.5" /> Extra Discount

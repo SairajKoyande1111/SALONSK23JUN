@@ -242,6 +242,7 @@ export interface IBill extends Document {
   finalAmount: number;
   paymentMethod: string;
   status: string;
+  notes?: string;
   createdAt: Date;
 }
 
@@ -274,6 +275,7 @@ const BillSchema = new Schema<IBill>(
     finalAmount: { type: Number, required: true },
     paymentMethod: { type: String, default: "cash" },
     status: { type: String, default: "paid" },
+    notes: { type: String, default: "" },
   },
   { timestamps: true }
 );

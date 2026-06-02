@@ -56,6 +56,17 @@ export default function Memberships() {
   const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [assignSaving, setAssignSaving] = useState(false);
 
+  // Edit sub-member modal
+  const [editSubMember, setEditSubMember] = useState<{ cm: any; member: any; idx: number } | null>(null);
+  const [editSubMemberForm, setEditSubMemberForm] = useState({ name: "", phone: "", gender: "", dob: "", anniversary: "" });
+  const [editSubMemberSaving, setEditSubMemberSaving] = useState(false);
+
+  // New sub-members being added inside Edit Membership modal
+  type NewFM = { name: string; phone: string; gender: string; dob: string; anniversary: string };
+  const EMPTY_NEW_FM: NewFM = { name: "", phone: "", gender: "", dob: "", anniversary: "" };
+  const [editFormNewMembers, setEditFormNewMembers] = useState<NewFM[]>([]);
+  const [showAddSubInEdit, setShowAddSubInEdit] = useState(false);
+
   // View member modal
   const [viewMember, setViewMember] = useState<any | null>(null);
 
@@ -232,6 +243,54 @@ export default function Memberships() {
       membershipId: cm.membershipId || "",
       membershipName: cm.membershipName || "",
     });
+    setEditFormNewMembers([]);
+    setShowAddSubInEdit(false);
+  };
+
+  const openEditSubMember = (cm: any, member: any, idx: number) => {
+    setEditSubMember({ cm, member, idx });
+    setEditSubMemberForm({
+      name: member.name || "",
+      phone: member.phone || "",
+      gender: member.gender || "",
+      dob: member.dob || "",
+      anniversary: member.anniversary || "",
+    });
+  };
+
+  const handleSaveSubMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editSubMember) return;
+    setEditSubMemberSaving(true);
+    try {
+      const customer = customers.find((c: any) => (c.id || c._id) === editSubMember.cm.customerId);
+      if (!customer) throw new Error("Customer not found");
+      const updatedMembers = [...(customer.familyMembers || [])];
+      updatedMembers[editSubMember.idx] = {
+        name: editSubMemberForm.name.trim(),
+        phone: editSubMemberForm.phone.trim(),
+        gender: editSubMemberForm.gender,
+        dob: editSubMemberForm.dob,
+        anniversary: editSubMemberForm.anniversary,
+      };
+      const res = await fetch(`${API_BASE}/customers/${editSubMember.cm.customerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ familyMembers: updatedMembers }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to update sub-member");
+      }
+      toast({ title: "Sub-member updated!" });
+      setEditSubMember(null);
+      fetchCustomers();
+      fetchActiveMembers();
+    } catch (err: any) {
+      toast({ title: err.message || "Failed to update sub-member", variant: "destructive" });
+    } finally {
+      setEditSubMemberSaving(false);
+    }
   };
 
   const handleEditSave = async (e: React.FormEvent) => {
@@ -251,9 +310,30 @@ export default function Memberships() {
         }),
       });
       if (!res.ok) throw new Error();
+
+      // Also save any newly-added sub-members to the customer
+      const validNew = editFormNewMembers.filter(m => m.name.trim());
+      if (validNew.length > 0) {
+        const customer = customers.find((c: any) => (c.id || c._id) === editMember.customerId);
+        if (customer) {
+          const existing: any[] = Array.isArray(customer.familyMembers) ? customer.familyMembers : [];
+          const merged = [...existing, ...validNew.map(m => ({
+            name: m.name.trim(), phone: m.phone.trim(), gender: m.gender, dob: m.dob, anniversary: m.anniversary,
+          }))];
+          await fetch(`${API_BASE}/customers/${editMember.customerId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ familyMembers: merged }),
+          });
+        }
+      }
+
       toast({ title: "Membership updated" });
       setEditMember(null);
+      setEditFormNewMembers([]);
+      setShowAddSubInEdit(false);
       fetchActiveMembers();
+      fetchCustomers();
     } catch {
       toast({ title: "Failed to update membership", variant: "destructive" });
     } finally {
@@ -543,7 +623,7 @@ export default function Memberships() {
                               <BadgeCheck className="w-3 h-3" /> Covered
                             </span>
                             <button
-                              onClick={() => openEditMember({ ...cm, _editSubMember: m, _subMemberIdx: idx })}
+                              onClick={() => openEditSubMember(cm, m, idx)}
                               className="text-xs px-2 py-1 rounded-lg border border-border/60 hover:bg-primary/10 hover:text-primary transition-colors font-medium flex items-center gap-1 shrink-0"
                               title="Edit sub-member"
                             >
@@ -692,26 +772,71 @@ export default function Memberships() {
               {(() => {
                 const customer = customers.find((c: any) => (c.id || c._id) === editMember?.customerId);
                 const familyMembers: any[] = Array.isArray(customer?.familyMembers) ? customer.familyMembers.filter((m: any) => m.name) : [];
-                if (familyMembers.length === 0) return null;
                 return (
                   <div className="bg-muted/30 rounded-xl border border-border/60 p-4">
                     <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5" /> Sub-members ({familyMembers.length})
+                      <Users className="w-3.5 h-3.5" /> Sub-members ({familyMembers.length + editFormNewMembers.filter(m => m.name.trim()).length})
                     </p>
-                    <div className="space-y-2">
-                      {familyMembers.map((m: any, i: number) => (
-                        <div key={i} className="flex items-center gap-2.5 bg-card rounded-lg px-3 py-2 border border-border/50">
-                          <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
-                            {m.name.substring(0, 2).toUpperCase()}
+                    {familyMembers.length > 0 && (
+                      <div className="space-y-2 mb-3">
+                        {familyMembers.map((m: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2.5 bg-card rounded-lg px-3 py-2 border border-border/50">
+                            <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
+                              {m.name.substring(0, 2).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold truncate">{m.name}</p>
+                              {m.phone && <p className="text-xs text-muted-foreground">{m.phone}</p>}
+                            </div>
+                            {m.gender && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground capitalize">{m.gender}</span>}
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold truncate">{m.name}</p>
-                            {m.phone && <p className="text-xs text-muted-foreground">{m.phone}</p>}
-                          </div>
-                          {m.gender && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground capitalize">{m.gender}</span>}
+                        ))}
+                      </div>
+                    )}
+                    {/* New sub-members being added */}
+                    {editFormNewMembers.map((nm, ni) => (
+                      <div key={ni} className="bg-card border border-primary/30 rounded-xl p-3 mb-2 space-y-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-xs font-semibold text-primary">New Sub-member {ni + 1}</p>
+                          <button type="button" onClick={() => setEditFormNewMembers(prev => prev.filter((_, ii) => ii !== ni))}
+                            className="text-xs text-destructive hover:underline">Remove</button>
                         </div>
-                      ))}
-                    </div>
+                        <input required type="text" placeholder="Name *" value={nm.name}
+                          onChange={e => setEditFormNewMembers(prev => prev.map((x, ii) => ii === ni ? { ...x, name: e.target.value } : x))}
+                          className="w-full p-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input type="tel" placeholder="Phone" value={nm.phone}
+                            onChange={e => setEditFormNewMembers(prev => prev.map((x, ii) => ii === ni ? { ...x, phone: e.target.value.replace(/\D/g, "").slice(0, 10) } : x))}
+                            className="p-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+                          <select value={nm.gender}
+                            onChange={e => setEditFormNewMembers(prev => prev.map((x, ii) => ii === ni ? { ...x, gender: e.target.value } : x))}
+                            className="p-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none">
+                            <option value="">Gender</option>
+                            <option value="female">Female</option>
+                            <option value="male">Male</option>
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] text-muted-foreground uppercase tracking-wide block mb-0.5">Date of Birth</label>
+                            <input type="date" value={nm.dob}
+                              onChange={e => setEditFormNewMembers(prev => prev.map((x, ii) => ii === ni ? { ...x, dob: e.target.value } : x))}
+                              className="w-full p-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-muted-foreground uppercase tracking-wide block mb-0.5">Anniversary</label>
+                            <input type="date" value={nm.anniversary}
+                              onChange={e => setEditFormNewMembers(prev => prev.map((x, ii) => ii === ni ? { ...x, anniversary: e.target.value } : x))}
+                              className="w-full p-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <button type="button"
+                      onClick={() => setEditFormNewMembers(prev => [...prev, { ...EMPTY_NEW_FM }])}
+                      className="w-full py-2 rounded-xl border border-dashed border-primary/50 text-primary text-xs font-semibold hover:bg-primary/5 transition-colors flex items-center justify-center gap-1.5 mt-1">
+                      <Plus className="w-3.5 h-3.5" /> Add Sub-member
+                    </button>
                   </div>
                 );
               })()}
@@ -923,6 +1048,77 @@ export default function Memberships() {
                 <button type="submit" disabled={assignSaving || !selectedCustomer}
                   className="flex-1 py-3 rounded-xl bg-secondary text-white font-bold text-sm disabled:opacity-50 hover:bg-secondary/90 transition-colors">
                   {assignSaving ? "Assigning..." : "Assign Membership"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Sub-member Modal */}
+      {editSubMember && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-md animate-in slide-in-from-bottom-4 duration-300">
+            <div className="flex items-center justify-between p-6 border-b border-border">
+              <div>
+                <h2 className="text-xl font-serif font-bold text-primary">Edit Sub-member</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">Member of {editSubMember.cm.customerName}</p>
+              </div>
+              <button onClick={() => setEditSubMember(null)} className="w-8 h-8 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveSubMember} className="p-6 space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Name *</label>
+                <input required type="text" placeholder="Full name"
+                  value={editSubMemberForm.name}
+                  onChange={e => setEditSubMemberForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Gender</label>
+                <div className="flex gap-2">
+                  {[{ label: "♂ Male", value: "male" }, { label: "♀ Female", value: "female" }].map(g => (
+                    <button key={g.value} type="button"
+                      onClick={() => setEditSubMemberForm(f => ({ ...f, gender: f.gender === g.value ? "" : g.value }))}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${editSubMemberForm.gender === g.value ? "bg-primary text-white border-primary" : "border-border text-muted-foreground hover:bg-muted"}`}>
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Phone</label>
+                <input type="tel" maxLength={10} placeholder="10-digit mobile"
+                  value={editSubMemberForm.phone}
+                  onChange={e => setEditSubMemberForm(f => ({ ...f, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Date of Birth</label>
+                  <input type="date"
+                    value={editSubMemberForm.dob}
+                    onChange={e => setEditSubMemberForm(f => ({ ...f, dob: e.target.value }))}
+                    className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Anniversary</label>
+                  <input type="date"
+                    value={editSubMemberForm.anniversary}
+                    onChange={e => setEditSubMemberForm(f => ({ ...f, anniversary: e.target.value }))}
+                    className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setEditSubMember(null)}
+                  className="flex-1 py-3 rounded-xl border border-border font-semibold text-sm hover:bg-muted transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" disabled={editSubMemberSaving || !editSubMemberForm.name.trim()}
+                  className="flex-1 py-3 rounded-xl bg-primary text-white font-bold text-sm disabled:opacity-50 hover:bg-primary/90 transition-colors">
+                  {editSubMemberSaving ? "Saving..." : "Save Changes"}
                 </button>
               </div>
             </form>

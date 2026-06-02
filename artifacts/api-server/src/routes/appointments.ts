@@ -23,7 +23,7 @@ router.get("/appointments", async (req, res) => {
 });
 
 router.post("/appointments", async (req, res) => {
-  const { customerId, staffId, serviceId, serviceIds, appointmentDate, appointmentTime, notes } = req.body;
+  const { customerId, staffId, serviceId, serviceIds, serviceVariantNames, appointmentDate, appointmentTime, notes } = req.body;
 
   let customerName = "Walk-in";
   let customerPhone = "";
@@ -42,12 +42,16 @@ router.post("/appointments", async (req, res) => {
     ? serviceIds
     : serviceId ? [serviceId] : [];
 
+  // Optional variant names to override looked-up service names
+  const variantNames: string[] = Array.isArray(serviceVariantNames) ? serviceVariantNames : [];
+
   const resolvedServices = await Promise.all(
-    ids.map(async (sid) => {
+    ids.map(async (sid, i) => {
       const svc = await Service.findById(sid);
+      const nameOverride = variantNames[i] || null;
       return svc
-        ? { serviceId: sid, serviceName: svc.name, serviceCategory: svc.category || "General", duration: svc.duration || 30 }
-        : { serviceId: sid, serviceName: "Unknown", serviceCategory: "General", duration: 30 };
+        ? { serviceId: sid, serviceName: nameOverride || svc.name, serviceCategory: svc.category || "General", duration: svc.duration || 30 }
+        : { serviceId: sid, serviceName: nameOverride || "Unknown", serviceCategory: "General", duration: 30 };
     })
   );
 
@@ -76,7 +80,7 @@ router.post("/appointments", async (req, res) => {
 
 router.put("/appointments/:appointmentId", async (req, res) => {
   const { appointmentId } = req.params;
-  const { status, notes, customerId, staffId, serviceId, serviceIds, appointmentDate, appointmentTime } = req.body;
+  const { status, notes, customerId, staffId, serviceId, serviceIds, serviceVariantNames, appointmentDate, appointmentTime } = req.body;
 
   const update: any = {};
   if (status !== undefined) update.status = status;
@@ -112,13 +116,16 @@ router.put("/appointments/:appointmentId", async (req, res) => {
     ? serviceIds
     : serviceId ? [serviceId] : [];
 
+  const variantNames: string[] = Array.isArray(serviceVariantNames) ? serviceVariantNames : [];
+
   if (ids.length > 0) {
     const resolvedServices = await Promise.all(
-      ids.map(async (sid) => {
+      ids.map(async (sid, i) => {
         const svc = await Service.findById(sid);
+        const nameOverride = variantNames[i] || null;
         return svc
-          ? { serviceId: sid, serviceName: svc.name, serviceCategory: svc.category || "General", duration: svc.duration || 30 }
-          : { serviceId: sid, serviceName: "Unknown", serviceCategory: "General", duration: 30 };
+          ? { serviceId: sid, serviceName: nameOverride || svc.name, serviceCategory: svc.category || "General", duration: svc.duration || 30 }
+          : { serviceId: sid, serviceName: nameOverride || "Unknown", serviceCategory: "General", duration: 30 };
       })
     );
     const primaryService = resolvedServices[0];

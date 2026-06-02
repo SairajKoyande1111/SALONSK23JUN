@@ -73,6 +73,7 @@ router.post("/bills", async (req, res) => {
     finalAmount,
     paymentMethod,
     status,
+    notes,
   } = req.body;
 
   const billNumber = await generateBillNumber();
@@ -90,6 +91,7 @@ router.post("/bills", async (req, res) => {
     finalAmount,
     paymentMethod,
     status: status || "paid",
+    notes: notes || "",
   });
 
   // Update customer totalSpend and totalVisits if linked

@@ -38,6 +38,7 @@ interface Bill {
   finalAmount: number;
   paymentMethod: string;
   status: string;
+  notes?: string;
   createdAt: string | Date;
 }
 
@@ -57,6 +58,11 @@ function formatPhone(phone?: string) {
 export function InvoiceModal({ bill, onClose }: InvoiceModalProps) {
   const invoiceDate = bill.createdAt ? new Date(bill.createdAt) : new Date();
   const phone = formatPhone(bill.customerPhone);
+
+  // Compute total per-item discounts (birthday/anniversary/membership discounts)
+  const totalItemDiscount = bill.items.reduce((sum, i) => sum + (Number(i.discount) || 0), 0);
+  // The subtotal stored in the bill is AFTER item discounts, so we show the gross first
+  const grossSubtotal = bill.subtotal + totalItemDiscount;
 
   const handlePrint = () => {
     const el = document.getElementById("invoice-print-area");
@@ -125,6 +131,13 @@ export function InvoiceModal({ bill, onClose }: InvoiceModalProps) {
 
             <hr style={{ border: "none", borderTop: "2px solid #111", margin: "0 0 24px 0" }} />
 
+            {/* Special occasion banner */}
+            {bill.notes && (
+              <div style={{ background: "#fff8f0", border: "1.5px solid #f0a060", borderRadius: 8, padding: "8px 16px", marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#b85c00", fontFamily: f }}>{bill.notes}</span>
+              </div>
+            )}
+
             {/* ── FROM + BILL TO ── */}
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 32 }}>
               {/* From */}
@@ -185,7 +198,7 @@ export function InvoiceModal({ bill, onClose }: InvoiceModalProps) {
                     </td>
                     <td style={{ padding: "12px 12px", textAlign: "center", fontSize: 13, fontFamily: f }}>{item.quantity}</td>
                     <td style={{ padding: "12px 12px", textAlign: "right", fontSize: 13, fontFamily: f }}>₹{Number(item.price).toLocaleString("en-IN")}</td>
-                    <td style={{ padding: "12px 12px", textAlign: "right", fontSize: 13, color: item.discount > 0 ? "#555" : "#bbb", fontFamily: f }}>
+                    <td style={{ padding: "12px 12px", textAlign: "right", fontSize: 13, color: item.discount > 0 ? "#d97706" : "#bbb", fontWeight: item.discount > 0 ? 600 : 400, fontFamily: f }}>
                       {item.discount > 0 ? `−₹${Number(item.discount).toLocaleString("en-IN")}` : "—"}
                     </td>
                     <td style={{ padding: "12px 12px", textAlign: "right", fontSize: 13, fontWeight: 700, color: "#111", fontFamily: f }}>
@@ -197,14 +210,31 @@ export function InvoiceModal({ bill, onClose }: InvoiceModalProps) {
             </table>
 
             {/* ── TOTALS ── */}
-            <div style={{ marginLeft: "auto", width: 280, marginTop: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, color: "#555", fontFamily: f }}>
-                <span>Subtotal</span>
-                <span>₹{Number(bill.subtotal).toLocaleString("en-IN")}</span>
-              </div>
+            <div style={{ marginLeft: "auto", width: 300, marginTop: 16 }}>
+              {totalItemDiscount > 0 ? (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, color: "#555", fontFamily: f }}>
+                    <span>Gross Amount</span>
+                    <span>₹{Number(grossSubtotal).toLocaleString("en-IN")}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, color: "#b85c00", fontWeight: 600, fontFamily: f }}>
+                    <span>{bill.notes ? bill.notes.replace(/ — \d+% off!/, "") + " Discount" : "Special Discount"}</span>
+                    <span>− ₹{Number(totalItemDiscount).toLocaleString("en-IN")}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, color: "#555", fontFamily: f }}>
+                    <span>Subtotal</span>
+                    <span>₹{Number(bill.subtotal).toLocaleString("en-IN")}</span>
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, color: "#555", fontFamily: f }}>
+                  <span>Subtotal</span>
+                  <span>₹{Number(bill.subtotal).toLocaleString("en-IN")}</span>
+                </div>
+              )}
               {bill.discountAmount > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, color: "#111", fontFamily: f }}>
-                  <span>Discount</span>
+                  <span>Extra Discount</span>
                   <span>− ₹{Number(bill.discountAmount).toLocaleString("en-IN")}</span>
                 </div>
               )}
