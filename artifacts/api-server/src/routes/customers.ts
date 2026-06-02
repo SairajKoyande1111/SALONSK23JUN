@@ -117,33 +117,35 @@ router.post("/customers/migrate-family", async (_req, res) => {
 // ── List all customers ─────────────────────────────────────────────────────────
 router.get("/customers", async (req, res) => {
   const { search } = req.query;
-  const query = search
-    ? {
-        $or: [
-          { name: { $regex: search, $options: "i" } },
-          { phone: { $regex: search, $options: "i" } },
-        ],
-      }
-    : {};
 
-  const customers = await Customer.find(query).sort({ createdAt: -1 });
+  // Always fetch all customers so we can correctly group family members under parents
+  const allCustomers = await Customer.find({}).sort({ createdAt: -1 });
 
-  // Build parent-name map for family customers
-  const parentIds = [
-    ...new Set(customers.filter((c) => c.familyOf).map((c) => c.familyOf!.toString())),
-  ];
-  const parentDocs =
-    parentIds.length > 0
-      ? await Customer.find({ _id: { $in: parentIds } }, { name: 1 })
-      : [];
-  const parentNameMap: Record<string, string> = {};
-  for (const p of parentDocs) parentNameMap[p._id.toString()] = p.name;
+  // Separate top-level customers from family-linked ones
+  const familyCustomers = allCustomers.filter((c) => c.familyOf);
+  let topLevelCustomers = allCustomers.filter((c) => !c.familyOf);
+
+  // Apply search filter to top-level customers only
+  if (search && typeof search === "string") {
+    const s = search.toLowerCase();
+    topLevelCustomers = topLevelCustomers.filter(
+      (c) => c.name.toLowerCase().includes(s) || c.phone.includes(s)
+    );
+  }
+
+  // Build familyMap: parentId → array of family Customer docs
+  const familyMap: Record<string, any[]> = {};
+  for (const fc of familyCustomers) {
+    const pid = fc.familyOf!.toString();
+    if (!familyMap[pid]) familyMap[pid] = [];
+    familyMap[pid].push(fc);
+  }
 
   const today = format(new Date(), "yyyy-MM-dd");
-  const customerIds = customers.map((c) => c._id.toString());
+  const allCustomerIds = allCustomers.map((c) => c._id.toString());
 
   const activeMemberships = await CustomerMembership.find({
-    customerId: { $in: customerIds },
+    customerId: { $in: allCustomerIds },
     isActive: true,
     endDate: { $gte: today },
   });
@@ -152,11 +154,8 @@ router.get("/customers", async (req, res) => {
     membershipMap[cm.customerId] = { ...cm.toObject(), id: cm._id.toString() };
   }
 
-  // For family customers without their own membership, pull parent's membership
-  const familyWithoutMembership = customers.filter(
-    (c) => c.familyOf && !membershipMap[c._id.toString()]
-  );
-  const parentIdsForMem = [...new Set(familyWithoutMembership.map((c) => c.familyOf!.toString()))];
+  // Build parent membership map so family members without own membership can inherit
+  const parentIdsForMem = [...new Set(familyCustomers.map((c) => c.familyOf!.toString()))];
   const parentMembershipMap: Record<string, any> = {};
   if (parentIdsForMem.length > 0) {
     const parentMems = await CustomerMembership.find({
@@ -170,17 +169,30 @@ router.get("/customers", async (req, res) => {
   }
 
   res.json({
-    customers: customers.map((c) => {
+    customers: topLevelCustomers.map((c) => {
       const cId = c._id.toString();
-      const familyOfId = c.familyOf ? c.familyOf.toString() : null;
       const ownMembership = membershipMap[cId] || null;
-      const parentMembership = familyOfId ? parentMembershipMap[familyOfId] || null : null;
+
+      // Populate familyMembers with actual Customer records, each with their own membership
+      const members = (familyMap[cId] || []).map((fm) => {
+        const fmId = fm._id.toString();
+        const fmOwnMem = membershipMap[fmId] || null;
+        const fmParentMem = parentMembershipMap[cId] || null;
+        return {
+          ...fm.toObject(),
+          id: fmId,
+          familyOfId: cId,
+          activeMembership: fmOwnMem || fmParentMem,
+        };
+      });
+
       return {
         ...c.toObject(),
         id: cId,
-        familyOfId,
-        familyOfName: familyOfId ? parentNameMap[familyOfId] || null : null,
-        activeMembership: ownMembership || parentMembership,
+        familyOfId: null,
+        familyOfName: null,
+        familyMembers: members,
+        activeMembership: ownMembership,
       };
     }),
   });

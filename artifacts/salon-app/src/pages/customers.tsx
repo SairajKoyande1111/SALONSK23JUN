@@ -165,7 +165,7 @@ export default function Customers() {
       const res = await fetch(`${API_BASE}/customers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...formData, email: "" }),
+        body: JSON.stringify({ name: formData.name, phone: formData.phone, dob: formData.dob, anniversary: formData.anniversary, gender: formData.gender, email: "" }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -184,6 +184,18 @@ export default function Customers() {
             body: JSON.stringify({ customerId, membershipId: formData.membershipId, startDate: formData.membershipStartDate }),
           });
         } catch {}
+      }
+      if (customerId) {
+        for (const member of formData.familyMembers) {
+          if (!member.name.trim()) continue;
+          try {
+            await fetch(`${API_BASE}/customers/${customerId}/family-member`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(member),
+            });
+          } catch {}
+        }
       }
       toast({ title: "Customer Added", description: `${formData.name} has been registered.` });
       setShowAdd(false);
@@ -238,7 +250,7 @@ export default function Customers() {
       const res = await fetch(`${API_BASE}/customers/${customerId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editForm.name, phone: editForm.phone, dob: editForm.dob, anniversary: editForm.anniversary, gender: editForm.gender, familyMembers: editForm.familyMembers }),
+        body: JSON.stringify({ name: editForm.name, phone: editForm.phone, dob: editForm.dob, anniversary: editForm.anniversary, gender: editForm.gender }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -255,6 +267,30 @@ export default function Customers() {
             body: JSON.stringify({ customerId, membershipId: editMembershipId, startDate: editMembershipStartDate }),
           });
         } catch {}
+      }
+      const originalMembers: any[] = Array.isArray(editCustomer.familyMembers) ? editCustomer.familyMembers : [];
+      const originalNames = new Set(originalMembers.map((m: any) => (m.name || "").trim().toLowerCase()));
+      const newNames = new Set(editForm.familyMembers.filter(m => m.name.trim()).map(m => m.name.trim().toLowerCase()));
+      for (const member of editForm.familyMembers) {
+        if (!member.name.trim()) continue;
+        if (!originalNames.has(member.name.trim().toLowerCase())) {
+          try {
+            await fetch(`${API_BASE}/customers/${customerId}/family-member`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(member),
+            });
+          } catch {}
+        }
+      }
+      for (const orig of originalMembers) {
+        if (!(orig.name || "").trim()) continue;
+        if (!newNames.has((orig.name || "").trim().toLowerCase())) {
+          const origId = orig.id || orig._id;
+          if (origId) {
+            try { await fetch(`${API_BASE}/customers/${origId}`, { method: "DELETE" }); } catch {}
+          }
+        }
       }
       toast({ title: "Customer Updated", description: `${editForm.name} has been updated.` });
       setEditCustomer(null);
@@ -283,11 +319,10 @@ export default function Customers() {
     setSubMemberBills([]);
     setSubMemberBillsLoading(true);
     try {
-      const parentId = parent.id || parent._id;
-      const res = await fetch(`${API_BASE}/bills?customerId=${parentId}`);
+      const memberId = member.id || member._id;
+      const res = await fetch(`${API_BASE}/bills?customerId=${memberId}`);
       const d = await res.json();
-      const memberBills = (d.bills || []).filter((b: any) => b.customerName === member.name);
-      setSubMemberBills(memberBills);
+      setSubMemberBills(d.bills || []);
     } catch { setSubMemberBills([]); }
     finally { setSubMemberBillsLoading(false); }
   };
@@ -308,20 +343,18 @@ export default function Customers() {
     if (!editSubMemberState) return;
     setEditSubMemberSaving(true);
     try {
-      const { parent, idx } = editSubMemberState;
-      const parentId = parent.id || parent._id;
-      const updatedMembers = [...(parent.familyMembers || [])];
-      updatedMembers[idx] = {
-        name: editSubMemberForm.name.trim(),
-        gender: editSubMemberForm.gender,
-        phone: editSubMemberForm.phone.trim(),
-        dob: editSubMemberForm.dob,
-        anniversary: editSubMemberForm.anniversary,
-      };
-      const res = await fetch(`${API_BASE}/customers/${parentId}`, {
+      const { member } = editSubMemberState;
+      const memberId = member.id || member._id;
+      const res = await fetch(`${API_BASE}/customers/${memberId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ familyMembers: updatedMembers }),
+        body: JSON.stringify({
+          name: editSubMemberForm.name.trim(),
+          gender: editSubMemberForm.gender,
+          phone: editSubMemberForm.phone.trim(),
+          dob: editSubMemberForm.dob,
+          anniversary: editSubMemberForm.anniversary,
+        }),
       });
       if (!res.ok) throw new Error();
       toast({ title: "Sub-member updated!" });
@@ -336,14 +369,9 @@ export default function Customers() {
     if (!deleteSubMemberState) return;
     setDeleteSubMemberLoading(true);
     try {
-      const { parent, idx } = deleteSubMemberState;
-      const parentId = parent.id || parent._id;
-      const updatedMembers = (parent.familyMembers || []).filter((_: any, i: number) => i !== idx);
-      const res = await fetch(`${API_BASE}/customers/${parentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ familyMembers: updatedMembers }),
-      });
+      const { member } = deleteSubMemberState;
+      const memberId = member.id || member._id;
+      const res = await fetch(`${API_BASE}/customers/${memberId}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       toast({ title: "Sub-member removed" });
       setDeleteSubMemberState(null);

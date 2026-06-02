@@ -247,7 +247,7 @@ export default function POS() {
       const validFamilyMembers = addForm.familyMembers.filter(m => m.name.trim());
       const res = await fetch(`${API_BASE}/customers`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: addForm.name, phone: addForm.phone, dob: addForm.dob, gender: addForm.gender, anniversary: addForm.anniversary, email: "", familyMembers: validFamilyMembers }),
+        body: JSON.stringify({ name: addForm.name, phone: addForm.phone, dob: addForm.dob, gender: addForm.gender, anniversary: addForm.anniversary, email: "" }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -255,12 +255,21 @@ export default function POS() {
         return;
       }
       const newC = await res.json();
+      const newCId = newC.id || newC._id;
       if (addForm.membershipId) {
         const today = new Date().toISOString().slice(0, 10);
         await fetch(`${API_BASE}/customer-memberships`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ customerId: newC.id || newC._id, membershipId: addForm.membershipId, startDate: addForm.membershipStartDate || today }),
+          body: JSON.stringify({ customerId: newCId, membershipId: addForm.membershipId, startDate: addForm.membershipStartDate || today }),
         }).catch(() => {});
+      }
+      for (const member of validFamilyMembers) {
+        try {
+          await fetch(`${API_BASE}/customers/${newCId}/family-member`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(member),
+          });
+        } catch {}
       }
       await refetchCustomers(); selectCustomer(newC);
       setShowAddCustomer(false); resetAddForm();
