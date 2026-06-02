@@ -71,3 +71,8 @@ externalPort = 8080
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.development]
+PORT = "5000"
