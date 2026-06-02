@@ -135,16 +135,12 @@ export default function POS() {
       for (const m of members) {
         if (!m.name) continue;
         result.push({
-          id: `family:${c.id || c._id}:${m.name}`,
-          name: m.name,
-          phone: m.phone || "",
-          gender: m.gender || "",
-          dob: m.dob || "",
-          anniversary: m.anniversary || "",
+          ...m,
+          id: m.id || m._id,
           _isFamily: true,
           _parentId: c.id || c._id,
           _parentName: c.name,
-          activeMembership: c.activeMembership,
+          activeMembership: m.activeMembership || c.activeMembership,
         });
       }
     }
@@ -208,22 +204,15 @@ export default function POS() {
   };
 
   const selectCustomer = (c: any) => {
-    if (c._isFamily) {
-      setCustomerId(c._parentId);
-      setCustomerName(c.name);
-      setCustomerPhone(c.phone || "");
-      setCustomerDob(c.dob || "");
-      setCustomerAnniversary(c.anniversary || "");
-      setSelectedMemberParentName(c._parentName);
-      setCustomerMembership(c.activeMembership || null);
-    } else {
-      const cid = c.id || c._id;
-      setCustomerId(cid); setCustomerName(c.name); setCustomerPhone(c.phone);
-      setCustomerDob(c.dob || ""); setCustomerAnniversary(c.anniversary || "");
-      setSelectedMemberParentName("");
-      if (c.activeMembership !== undefined) setCustomerMembership(c.activeMembership);
-      else fetchMembership(cid);
-    }
+    const cid = c.id || c._id;
+    setCustomerId(cid);
+    setCustomerName(c.name);
+    setCustomerPhone(c.phone || "");
+    setCustomerDob(c.dob || "");
+    setCustomerAnniversary(c.anniversary || "");
+    setSelectedMemberParentName(c._isFamily ? c._parentName : "");
+    if (c.activeMembership !== undefined) setCustomerMembership(c.activeMembership || null);
+    else fetchMembership(cid);
     setShowCustomerDropdown(false); setCustomerSearch("");
   };
 
