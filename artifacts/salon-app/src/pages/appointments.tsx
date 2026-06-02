@@ -703,7 +703,7 @@ function BookingModal({ onClose, onSuccess, customers: initialCustomers, staff, 
           <div>
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Customer</label>
             <CustomerSelect value={form.customerId} onChange={(id) => set("customerId", id)}
-              customers={customers} onCustomerCreated={(c) => setCustomers((prev: any[]) => [c, ...prev])} />
+              customers={customers} onCustomerCreated={(c) => setExtraCustomers((prev) => [c, ...prev])} />
           </div>
           <div>
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">
@@ -860,7 +860,7 @@ function EditModal({ appt, onClose, onSuccess, customers: initialCustomers, staf
           <div>
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Customer</label>
             <CustomerSelect value={form.customerId} onChange={(id) => set("customerId", id)}
-              customers={customers} onCustomerCreated={(c) => setCustomers((prev: any[]) => [c, ...prev])} />
+              customers={customers} onCustomerCreated={(c) => setExtraCustomers((prev) => [c, ...prev])} />
           </div>
           <div>
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">
@@ -1008,8 +1008,9 @@ export default function Appointments() {
   const { data: customersData } = useListCustomers();
   const { data: staffData } = useListStaff();
   const { data: servicesData } = useListServices();
+  const [extraCustomers, setExtraCustomers] = useState<any[]>([]);
 
-  const customers = customersData?.customers || [];
+  const customers = [...(customersData?.customers || []), ...extraCustomers];
   const staff = (staffData as any)?.staff || [];
   const services = servicesData?.services || [];
 

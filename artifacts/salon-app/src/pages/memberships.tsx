@@ -349,6 +349,19 @@ export default function Memberships() {
     );
   }, [customers, customerSearch]);
 
+  // Build a set of family-member IDs so we can exclude them from Active Members list
+  // (they're already shown as "covered" sub-members under their parent's row)
+  const familyMemberIdSet = useMemo(() => {
+    const s = new Set<string>();
+    customers.forEach((c: any) => {
+      (c.familyMembers || []).forEach((m: any) => {
+        const id = m.id || m._id;
+        if (id) s.add(id);
+      });
+    });
+    return s;
+  }, [customers]);
+
   const today = format(new Date(), "yyyy-MM-dd");
 
   return (
@@ -511,7 +524,7 @@ export default function Memberships() {
             </div>
           ) : (
             <div className="space-y-3">
-              {activeMembers.map((cm: any) => {
+              {activeMembers.filter((cm: any) => !familyMemberIdSet.has(cm.customerId)).map((cm: any) => {
                 const isExpiringSoon = cm.endDate <= format(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), "yyyy-MM-dd");
                 const customer = customers.find((c: any) => (c.id || c._id) === cm.customerId);
                 const familyMembers: any[] = Array.isArray(customer?.familyMembers) ? customer.familyMembers.filter((m: any) => m.name) : [];

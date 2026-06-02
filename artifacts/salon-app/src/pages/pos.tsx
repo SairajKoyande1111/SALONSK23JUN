@@ -490,10 +490,9 @@ export default function POS() {
                         </div>
                         <div className="flex-1 min-w-0 text-left">
                           <p className="font-medium truncate text-xs text-white">{c.name}</p>
-                          {c._isFamily ? (
-                            <p className="text-[11px] text-violet-300">Family of {c._parentName}</p>
-                          ) : (
-                            <p className="text-[11px] text-white/60">{c.phone}</p>
+                          <p className="text-[11px] text-white/60">{c.phone || <span className="italic opacity-50">No phone</span>}</p>
+                          {c._isFamily && (
+                            <p className="text-[10px] text-violet-300 font-medium">Family of {c._parentName}</p>
                           )}
                         </div>
                         {c.activeMembership && (
