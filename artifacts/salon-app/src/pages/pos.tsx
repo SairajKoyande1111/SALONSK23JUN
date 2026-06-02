@@ -82,15 +82,23 @@ export default function POS() {
   }, []);
 
   // Auto-discount: anniversary 40% > birthday 30% > membership %
-  const { autoDiscountPct, specialLabel } = useMemo(() => {
+  const { autoDiscountPct, specialLabel, membershipLabel } = useMemo(() => {
     if (customerAnniversary?.length >= 7 && customerAnniversary.substring(5) === todayMMDD)
-      return { autoDiscountPct: 40, specialLabel: "💐 Anniversary Special — 40% off!" };
+      return { autoDiscountPct: 40, specialLabel: "💐 Anniversary Special — 40% off!", membershipLabel: null };
     if (customerDob?.length >= 7 && customerDob.substring(5) === todayMMDD)
-      return { autoDiscountPct: 30, specialLabel: "🎂 Birthday Special — 30% off!" };
+      return { autoDiscountPct: 30, specialLabel: "🎂 Birthday Special — 30% off!", membershipLabel: null };
     if (customerMembership?.discountPercent > 0)
-      return { autoDiscountPct: customerMembership.discountPercent, specialLabel: null };
-    return { autoDiscountPct: 0, specialLabel: null };
+      return { autoDiscountPct: customerMembership.discountPercent, specialLabel: null, membershipLabel: `🏷 ${customerMembership.membershipName} — ${customerMembership.discountPercent}% off` };
+    return { autoDiscountPct: 0, specialLabel: null, membershipLabel: null };
   }, [customerDob, customerAnniversary, customerMembership, todayMMDD]);
+
+  // Retroactively apply discount to all service items already in cart when customer/discount changes
+  useEffect(() => {
+    setCart(prev => prev.map(item => {
+      if (item.type !== "service") return item;
+      return { ...item, discountAmt: Math.round(item.price * autoDiscountPct / 100) };
+    }));
+  }, [autoDiscountPct]);
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -267,7 +275,7 @@ export default function POS() {
       customerId: customerId || null, customerName: customerName || "Walk-in Customer", customerPhone: customerPhone || "",
       items: cart.map(i => ({ type: i.type, itemId: i.itemId, name: i.name, staffId: i.staffId || null, staffName: i.staffName || null, price: i.price, quantity: i.quantity, discount: i.discountAmt, total: getItemTotal(i) })),
       subtotal, taxPercent, taxAmount, paymentMethod, discountAmount: globalDiscountAmount, finalAmount, status: "paid",
-      notes: specialLabel || "",
+      notes: [specialLabel || membershipLabel, selectedMemberParentName ? `Family of ${selectedMemberParentName}` : ""].filter(Boolean).join(" · "),
     } as any }, {
       onSuccess: (bill: any) => {
         toast({ title: "✓ Bill Generated!", description: `${(bill as any).billNumber} — ₹${finalAmount.toLocaleString("en-IN")}` });

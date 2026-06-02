@@ -87,6 +87,15 @@ export default function Customers() {
 
   const [viewInvoiceBill, setViewInvoiceBill] = useState<any>(null);
 
+  const [viewSubMember, setViewSubMember] = useState<{member: any; parent: any} | null>(null);
+  const [subMemberBills, setSubMemberBills] = useState<any[]>([]);
+  const [subMemberBillsLoading, setSubMemberBillsLoading] = useState(false);
+  const [editSubMemberState, setEditSubMemberState] = useState<{member: any; parent: any; idx: number} | null>(null);
+  const [editSubMemberForm, setEditSubMemberForm] = useState({ name: "", gender: "", phone: "", dob: "", anniversary: "" });
+  const [editSubMemberSaving, setEditSubMemberSaving] = useState(false);
+  const [deleteSubMemberState, setDeleteSubMemberState] = useState<{member: any; parent: any; idx: number} | null>(null);
+  const [deleteSubMemberLoading, setDeleteSubMemberLoading] = useState(false);
+
   const allCustomers: any[] = data?.customers || [];
 
   const filteredSorted = useMemo(() => {
@@ -269,6 +278,81 @@ export default function Customers() {
     } finally { setDeleteLoading(false); }
   };
 
+  const openViewSubMember = async (member: any, parent: any) => {
+    setViewSubMember({ member, parent });
+    setSubMemberBills([]);
+    setSubMemberBillsLoading(true);
+    try {
+      const parentId = parent.id || parent._id;
+      const res = await fetch(`${API_BASE}/bills?customerId=${parentId}`);
+      const d = await res.json();
+      const memberBills = (d.bills || []).filter((b: any) => b.customerName === member.name);
+      setSubMemberBills(memberBills);
+    } catch { setSubMemberBills([]); }
+    finally { setSubMemberBillsLoading(false); }
+  };
+
+  const openEditSubMember = (member: any, parent: any, idx: number) => {
+    setEditSubMemberState({ member, parent, idx });
+    setEditSubMemberForm({
+      name: member.name || "",
+      gender: member.gender || "",
+      phone: member.phone || "",
+      dob: member.dob ? member.dob.substring(0, 10) : "",
+      anniversary: member.anniversary ? member.anniversary.substring(0, 10) : "",
+    });
+  };
+
+  const handleSaveSubMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editSubMemberState) return;
+    setEditSubMemberSaving(true);
+    try {
+      const { parent, idx } = editSubMemberState;
+      const parentId = parent.id || parent._id;
+      const updatedMembers = [...(parent.familyMembers || [])];
+      updatedMembers[idx] = {
+        name: editSubMemberForm.name.trim(),
+        gender: editSubMemberForm.gender,
+        phone: editSubMemberForm.phone.trim(),
+        dob: editSubMemberForm.dob,
+        anniversary: editSubMemberForm.anniversary,
+      };
+      const res = await fetch(`${API_BASE}/customers/${parentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ familyMembers: updatedMembers }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Sub-member updated!" });
+      setEditSubMemberState(null);
+      refetch();
+    } catch {
+      toast({ title: "Failed to update sub-member", variant: "destructive" });
+    } finally { setEditSubMemberSaving(false); }
+  };
+
+  const handleDeleteSubMember = async () => {
+    if (!deleteSubMemberState) return;
+    setDeleteSubMemberLoading(true);
+    try {
+      const { parent, idx } = deleteSubMemberState;
+      const parentId = parent.id || parent._id;
+      const updatedMembers = (parent.familyMembers || []).filter((_: any, i: number) => i !== idx);
+      const res = await fetch(`${API_BASE}/customers/${parentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ familyMembers: updatedMembers }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Sub-member removed" });
+      setDeleteSubMemberState(null);
+      refetch();
+    } catch {
+      toast({ title: "Failed to remove sub-member", variant: "destructive" });
+    } finally { setDeleteSubMemberLoading(false); }
+  };
+
   return (
     <div className="p-8 max-w-7xl mx-auto animate-in fade-in duration-500" style={{ fontFamily: "'Poppins', sans-serif" }}>
       <div className="flex justify-between items-center mb-8">
@@ -362,9 +446,16 @@ export default function Customers() {
                             </div>
                             <div>
                               <p className="font-medium text-foreground text-sm">{m.name}</p>
-                              <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-100 text-violet-600">
-                                <Users className="w-2.5 h-2.5" /> Family of {parent.name}
-                              </span>
+                              <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-100 text-violet-600">
+                                  <Users className="w-2.5 h-2.5" /> Family of {parent.name}
+                                </span>
+                                {parent.activeMembership && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700">
+                                    <BadgeCheck className="w-2.5 h-2.5" /> Member
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -383,10 +474,20 @@ export default function Customers() {
                         <td className="p-4 text-muted-foreground/40 text-sm">—</td>
                         <td className="p-4 text-muted-foreground/40 text-sm">—</td>
                         <td className="p-4">
-                          <button onClick={() => openEdit(parent)} title="Edit via parent customer"
-                            className="p-2 rounded-lg bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 transition-colors">
-                            <Pencil className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={() => openViewSubMember(m, parent)} title="View Sub-member"
+                              className="p-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => openEditSubMember(m, parent, parent.familyMembers.findIndex((fm: any) => fm === m))} title="Edit Sub-member"
+                              className="p-2 rounded-lg bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 transition-colors">
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => setDeleteSubMemberState({ member: m, parent, idx: parent.familyMembers.findIndex((fm: any) => fm === m) })} title="Remove Sub-member"
+                              className="p-2 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -889,6 +990,169 @@ export default function Customers() {
 
       {/* ── Invoice Modal ── */}
       {viewInvoiceBill && <InvoiceModal bill={viewInvoiceBill} onClose={() => setViewInvoiceBill(null)} />}
+
+      {/* ── View Sub-member Modal ── */}
+      {viewSubMember && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-card rounded-3xl w-full max-w-xl shadow-2xl max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-border/50 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-serif font-bold text-primary">{viewSubMember.member.name}</h2>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-100 text-violet-600">
+                    <Users className="w-2.5 h-2.5" /> Family of {viewSubMember.parent.name}
+                  </span>
+                  {viewSubMember.parent.activeMembership && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700">
+                      <BadgeCheck className="w-2.5 h-2.5" /> Member · {viewSubMember.parent.activeMembership.membershipName}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => setViewSubMember(null)} className="p-2 rounded-lg hover:bg-muted transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-6 space-y-6">
+              <div className="grid grid-cols-3 gap-3">
+                {viewSubMember.member.phone && (
+                  <div className="bg-muted/30 rounded-xl p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Contact</p>
+                    <p className="text-sm font-semibold mt-0.5">{viewSubMember.member.phone}</p>
+                  </div>
+                )}
+                {viewSubMember.member.dob && (
+                  <div className="bg-muted/30 rounded-xl p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Date of Birth</p>
+                    <p className="text-sm font-semibold mt-0.5">{format(new Date(viewSubMember.member.dob), "dd MMM yyyy")}</p>
+                  </div>
+                )}
+                {viewSubMember.member.gender && (
+                  <div className="bg-muted/30 rounded-xl p-3 text-center">
+                    <p className="text-xs text-muted-foreground">Gender</p>
+                    <p className="text-sm font-semibold mt-0.5 capitalize">{viewSubMember.member.gender}</p>
+                  </div>
+                )}
+              </div>
+              <div>
+                <h4 className="font-semibold mb-3 text-sm uppercase tracking-wider text-muted-foreground">Service History</h4>
+                {subMemberBillsLoading ? (
+                  <div className="text-center py-8 text-muted-foreground text-sm">Loading...</div>
+                ) : subMemberBills.length === 0 ? (
+                  <div className="text-center py-8 bg-muted/20 rounded-xl text-muted-foreground text-sm">No visits recorded yet.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {subMemberBills.map((bill: any) => (
+                      <div key={bill.id || bill._id} className="bg-muted/20 rounded-xl p-4 border border-border/40">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <p className="font-semibold text-sm">{bill.billNumber}</p>
+                            <p className="text-xs text-muted-foreground">{bill.createdAt ? format(new Date(bill.createdAt), "dd MMM yyyy, hh:mm a") : "—"}</p>
+                          </div>
+                          <span className="font-bold text-emerald-600">₹{Number(bill.finalAmount || 0).toLocaleString("en-IN")}</span>
+                        </div>
+                        <div className="space-y-1">
+                          {bill.items?.map((item: any, i: number) => (
+                            <div key={i} className="flex justify-between text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                {item.type === "service" ? <Scissors className="w-3 h-3 text-primary" /> : <Package className="w-3 h-3 text-secondary" />}
+                                <span className="text-foreground font-medium">{item.name}</span>
+                              </span>
+                              <span className="font-semibold text-foreground">₹{Number(item.total || 0).toLocaleString("en-IN")}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-border/30 flex items-center justify-between text-xs text-muted-foreground">
+                          <span className="capitalize">💳 {bill.paymentMethod}</span>
+                          <button onClick={() => setViewInvoiceBill({ ...bill, customerPhone: viewSubMember.member.phone })}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-semibold">
+                            <FileText className="w-3.5 h-3.5" /> View Invoice
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Sub-member Modal ── */}
+      {editSubMemberState && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-card rounded-3xl w-full max-w-sm shadow-2xl">
+            <div className="flex items-center justify-between px-8 pt-8 pb-4">
+              <h2 className="text-xl font-serif font-bold text-amber-600">Edit Sub-member</h2>
+              <button onClick={() => setEditSubMemberState(null)} className="p-2 rounded-lg hover:bg-muted transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveSubMember} className="px-8 pb-8 space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">Name *</label>
+                <input required placeholder="Member name"
+                  className="w-full p-3 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none"
+                  value={editSubMemberForm.name} onChange={e => setEditSubMemberForm(f => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2 text-muted-foreground">Gender</label>
+                <GenderToggle value={editSubMemberForm.gender} onChange={v => setEditSubMemberForm(f => ({ ...f, gender: v }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">Contact No</label>
+                <input type="tel" maxLength={10} placeholder="10-digit number"
+                  className="w-full p-3 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none"
+                  value={editSubMemberForm.phone} onChange={e => setEditSubMemberForm(f => ({ ...f, phone: e.target.value.replace(/\D/g, "") }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-muted-foreground">Birth Date</label>
+                  <input type="date" className="w-full p-2.5 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+                    value={editSubMemberForm.dob} onChange={e => setEditSubMemberForm(f => ({ ...f, dob: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-muted-foreground">Anniversary</label>
+                  <input type="date" className="w-full p-2.5 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+                    value={editSubMemberForm.anniversary} onChange={e => setEditSubMemberForm(f => ({ ...f, anniversary: e.target.value }))} />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setEditSubMemberState(null)}
+                  className="flex-1 py-3 rounded-xl border hover:bg-muted font-medium transition-colors">Cancel</button>
+                <button type="submit" disabled={editSubMemberSaving}
+                  className="flex-1 py-3 rounded-xl bg-amber-500 text-white font-medium hover:bg-amber-600 transition-colors disabled:opacity-50">
+                  {editSubMemberSaving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Sub-member Confirm Modal ── */}
+      {deleteSubMemberState && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-card rounded-3xl p-8 w-full max-w-sm shadow-2xl text-center">
+            <div className="w-14 h-14 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-7 h-7 text-destructive" />
+            </div>
+            <h2 className="text-xl font-bold mb-2">Remove Sub-member?</h2>
+            <p className="text-muted-foreground text-sm mb-6">
+              Remove <span className="font-semibold text-foreground">{deleteSubMemberState.member.name}</span> from <span className="font-semibold text-foreground">{deleteSubMemberState.parent.name}</span>'s family? This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteSubMemberState(null)}
+                className="flex-1 py-3 rounded-xl border hover:bg-muted font-medium transition-colors">Cancel</button>
+              <button onClick={handleDeleteSubMember} disabled={deleteSubMemberLoading}
+                className="flex-1 py-3 rounded-xl bg-destructive text-white font-medium hover:bg-destructive/90 transition-colors disabled:opacity-50">
+                {deleteSubMemberLoading ? "Removing..." : "Remove"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── View Customer Profile Modal (inline) ── */}
       {viewCustomerId && (

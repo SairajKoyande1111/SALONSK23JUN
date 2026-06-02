@@ -832,11 +832,15 @@ export default function Memberships() {
                         </div>
                       </div>
                     ))}
-                    <button type="button"
-                      onClick={() => setEditFormNewMembers(prev => [...prev, { ...EMPTY_NEW_FM }])}
-                      className="w-full py-2 rounded-xl border border-dashed border-primary/50 text-primary text-xs font-semibold hover:bg-primary/5 transition-colors flex items-center justify-center gap-1.5 mt-1">
-                      <Plus className="w-3.5 h-3.5" /> Add Sub-member
-                    </button>
+                    {(familyMembers.length + editFormNewMembers.length) < 4 ? (
+                      <button type="button"
+                        onClick={() => setEditFormNewMembers(prev => [...prev, { ...EMPTY_NEW_FM }])}
+                        className="w-full py-2 rounded-xl border border-dashed border-primary/50 text-primary text-xs font-semibold hover:bg-primary/5 transition-colors flex items-center justify-center gap-1.5 mt-1">
+                        <Plus className="w-3.5 h-3.5" /> Add Sub-member
+                      </button>
+                    ) : (
+                      <p className="text-xs text-muted-foreground text-center py-2 bg-muted/30 rounded-xl mt-1">Maximum 4 sub-members allowed</p>
+                    )}
                   </div>
                 );
               })()}

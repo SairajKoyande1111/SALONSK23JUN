@@ -59,6 +59,12 @@ export function InvoiceModal({ bill, onClose }: InvoiceModalProps) {
   const invoiceDate = bill.createdAt ? new Date(bill.createdAt) : new Date();
   const phone = formatPhone(bill.customerPhone);
 
+  // Parse notes to separate discount label from "Family of" info
+  const noteParts = (bill.notes || "").split(" · ");
+  const familyPart = noteParts.find(p => p.startsWith("Family of"));
+  const parentName = familyPart ? familyPart.replace("Family of ", "") : null;
+  const discountNote = noteParts.find(p => !p.startsWith("Family of")) || null;
+
   // Compute total per-item discounts (birthday/anniversary/membership discounts)
   const totalItemDiscount = bill.items.reduce((sum, i) => sum + (Number(i.discount) || 0), 0);
   // The subtotal stored in the bill is AFTER item discounts, so we show the gross first
@@ -131,10 +137,10 @@ export function InvoiceModal({ bill, onClose }: InvoiceModalProps) {
 
             <hr style={{ border: "none", borderTop: "2px solid #111", margin: "0 0 24px 0" }} />
 
-            {/* Special occasion banner */}
-            {bill.notes && (
+            {/* Special occasion / membership banner */}
+            {discountNote && (
               <div style={{ background: "#fff8f0", border: "1.5px solid #f0a060", borderRadius: 8, padding: "8px 16px", marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#b85c00", fontFamily: f }}>{bill.notes}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#b85c00", fontFamily: f }}>{discountNote}</span>
               </div>
             )}
 
@@ -152,6 +158,9 @@ export function InvoiceModal({ bill, onClose }: InvoiceModalProps) {
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 2, color: "#999", marginBottom: 6, fontWeight: 600, fontFamily: f }}>Bill To</div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: "#111", fontFamily: f }}>{bill.customerName}</div>
+                {parentName && (
+                  <div style={{ fontSize: 11, color: "#7c3aed", marginTop: 3, fontWeight: 600, fontFamily: f }}>Family of {parentName}</div>
+                )}
                 {phone && (
                   <div style={{ fontSize: 12, color: "#555", marginTop: 4, fontFamily: f }}>{phone}</div>
                 )}
@@ -218,7 +227,7 @@ export function InvoiceModal({ bill, onClose }: InvoiceModalProps) {
                     <span>₹{Number(grossSubtotal).toLocaleString("en-IN")}</span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, color: "#b85c00", fontWeight: 600, fontFamily: f }}>
-                    <span>{bill.notes ? bill.notes.replace(/ — \d+% off!/, "") + " Discount" : "Special Discount"}</span>
+                    <span>{discountNote ? discountNote.replace(/ — \d+% off[!]?/, "") + " Discount" : "Special Discount"}</span>
                     <span>− ₹{Number(totalItemDiscount).toLocaleString("en-IN")}</span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, color: "#555", fontFamily: f }}>
