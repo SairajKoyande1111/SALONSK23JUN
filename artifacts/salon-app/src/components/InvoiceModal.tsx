@@ -119,13 +119,9 @@ export function InvoiceModal({ bill, onClose }: InvoiceModalProps) {
 
             {/* ── HEADER ── */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{ display: "flex", alignItems: "center" }}>
                 <div style={{ width: 72, height: 72, borderRadius: "50%", overflow: "hidden", border: "2px solid #111", background: "#000", flexShrink: 0 }}>
                   <img src={LOGO_URL} alt="thetouch logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} crossOrigin="anonymous" />
-                </div>
-                <div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: "#111", letterSpacing: 1, fontFamily: f }}>{SALON.name}</div>
-                  <div style={{ fontSize: 10, color: "#777", letterSpacing: 3, textTransform: "uppercase", marginTop: 2, fontFamily: f }}>{SALON.tagline}</div>
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
