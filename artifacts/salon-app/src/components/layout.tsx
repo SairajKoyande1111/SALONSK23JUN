@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
 import { Sidebar } from "./Sidebar";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
@@ -20,11 +20,22 @@ const MODULE_NAMES: Record<string, string> = {
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location, navigate] = useLocation();
-  const { lockConfig, unlockedModules, unlockModule } = useAuth();
+  const { lockConfig, unlockedModules, unlockModule, currentUser, isMasterAdmin } = useAuth();
   const isPosPage = location === "/pos";
 
   const basePath = location.split("/").slice(0, 2).join("/") || "/";
-  const isLocked = lockConfig.modules.includes(basePath) && !unlockedModules.has(basePath);
+
+  useEffect(() => {
+    if (!isMasterAdmin && currentUser) {
+      const allowed = currentUser.allowedSections;
+      if (!allowed.includes(basePath) && basePath !== "/settings") {
+        navigate("/");
+      }
+    }
+  }, [basePath, isMasterAdmin, currentUser, navigate]);
+
+  const pinLockActive = currentUser?.moduleLockEnabled ?? isMasterAdmin;
+  const isLocked = pinLockActive && lockConfig.modules.includes(basePath) && !unlockedModules.has(basePath);
 
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden">

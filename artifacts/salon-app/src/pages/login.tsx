@@ -1,9 +1,14 @@
 import { useState } from "react";
 import { Eye, EyeOff, Lock, Mail } from "lucide-react";
-import { getStoredCredentials } from "@/contexts/auth";
+import {
+  getMasterCredentials,
+  getSubUsers,
+  setSessionUser,
+  CurrentUser,
+} from "@/contexts/auth";
 
 interface Props {
-  onLogin: () => void;
+  onLogin: (user: CurrentUser) => void;
 }
 
 export default function Login({ onLogin }: Props) {
@@ -18,13 +23,42 @@ export default function Login({ onLogin }: Props) {
     setError("");
     setLoading(true);
     setTimeout(() => {
-      const creds = getStoredCredentials();
-      if (email.trim() === creds.email && password === creds.password) {
-        sessionStorage.setItem("atsalon_session", "true");
-        onLogin();
-      } else {
-        setError("Invalid email or password. Please try again.");
+      const masterCreds = getMasterCredentials();
+
+      if (email.trim() === masterCreds.email && password === masterCreds.password) {
+        const user: CurrentUser = {
+          email: masterCreds.email,
+          name: "Master Admin",
+          isMaster: true,
+          allowedSections: ["*"],
+          moduleLockEnabled: true,
+        };
+        setSessionUser(user);
+        onLogin(user);
+        setLoading(false);
+        return;
       }
+
+      const subUsers = getSubUsers();
+      const matched = subUsers.find(
+        u => u.email.trim().toLowerCase() === email.trim().toLowerCase() && u.password === password
+      );
+
+      if (matched) {
+        const user: CurrentUser = {
+          email: matched.email,
+          name: matched.name,
+          isMaster: false,
+          allowedSections: matched.allowedSections,
+          moduleLockEnabled: matched.moduleLockEnabled,
+        };
+        setSessionUser(user);
+        onLogin(user);
+        setLoading(false);
+        return;
+      }
+
+      setError("Invalid email or password. Please try again.");
       setLoading(false);
     }, 600);
   };

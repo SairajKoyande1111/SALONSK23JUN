@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
-import { AuthProvider } from "@/contexts/auth";
+import { AuthProvider, getCurrentUserFromSession, CurrentUser } from "@/contexts/auth";
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
 
@@ -49,15 +49,21 @@ function Router() {
 }
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(() => sessionStorage.getItem("atsalon_session") === "true");
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
+    if (sessionStorage.getItem("atsalon_session") === "true") {
+      return getCurrentUserFromSession();
+    }
+    return null;
+  });
 
-  const handleLogin = () => setIsLoggedIn(true);
+  const handleLogin = (user: CurrentUser) => setCurrentUser(user);
   const handleLogout = () => {
     sessionStorage.removeItem("atsalon_session");
-    setIsLoggedIn(false);
+    sessionStorage.removeItem("atsalon_current_user");
+    setCurrentUser(null);
   };
 
-  if (!isLoggedIn) {
+  if (!currentUser) {
     return (
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
@@ -71,7 +77,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <AuthProvider>
+        <AuthProvider currentUser={currentUser}>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
             <Router />
           </WouterRouter>

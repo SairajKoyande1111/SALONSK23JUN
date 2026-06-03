@@ -12,12 +12,14 @@ import {
   FileText,
   LogOut,
   Settings,
-  Lock
+  Lock,
+  ShieldCheck,
 } from "lucide-react";
 import clsx from "clsx";
 import { useAuth } from "@/contexts/auth";
+import { clearSession } from "@/contexts/auth";
 
-const navItems = [
+const ALL_NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard",     href: "/" },
   { icon: MonitorCheck,    label: "POS / New Bill", href: "/pos" },
   { icon: CalendarDays,    label: "Appointments",   href: "/appointments" },
@@ -28,17 +30,26 @@ const navItems = [
   { icon: Briefcase,       label: "Staff",          href: "/staff" },
   { icon: Tag,             label: "Memberships",    href: "/memberships" },
   { icon: BarChart3,       label: "Reports",        href: "/reports" },
-  { icon: Settings,        label: "Settings",       href: "/settings" },
 ];
 
 export function Sidebar() {
   const [location] = useLocation();
-  const { lockConfig } = useAuth();
+  const { lockConfig, currentUser, isMasterAdmin } = useAuth();
 
   const handleLogout = () => {
-    sessionStorage.removeItem("atsalon_session");
+    clearSession();
     window.location.reload();
   };
+
+  const visibleNavItems = isMasterAdmin
+    ? ALL_NAV_ITEMS
+    : ALL_NAV_ITEMS.filter(item =>
+        currentUser?.allowedSections.includes(item.href)
+      );
+
+  const initials = currentUser?.name
+    ? currentUser.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
+    : "U";
 
   return (
     <div className="w-64 h-screen bg-sidebar flex flex-col shadow-2xl z-50">
@@ -52,9 +63,9 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 px-4 space-y-1 overflow-y-auto mt-4">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
-          const isLocked = lockConfig.modules.includes(item.href);
+          const isLocked = lockConfig.modules.includes(item.href) && (currentUser?.moduleLockEnabled ?? false);
           return (
             <Link 
               key={item.href} 
@@ -72,16 +83,34 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {isMasterAdmin && (
+          <Link
+            href="/settings"
+            className={clsx(
+              "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 font-medium text-sm",
+              location === "/settings"
+                ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-md shadow-black/10"
+                : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+            )}
+          >
+            <Settings className={clsx("w-5 h-5", location === "/settings" ? "text-secondary" : "")} />
+            <span className="flex-1">Settings</span>
+          </Link>
+        )}
       </nav>
 
       <div className="p-4 mt-auto border-t border-sidebar-border/50">
         <div className="mb-3 px-4 py-3 rounded-xl bg-sidebar-accent/30 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full rose-gold-gradient flex items-center justify-center text-white font-bold text-xs">
-            AT
+          <div className="w-8 h-8 rounded-full rose-gold-gradient flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+            {initials}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-sidebar-foreground font-semibold">The Touch</p>
-            <p className="text-[10px] text-sidebar-foreground/50 truncate">thetouch@gmail.com</p>
+            <div className="flex items-center gap-1">
+              <p className="text-xs text-sidebar-foreground font-semibold truncate">{currentUser?.name ?? "User"}</p>
+              {isMasterAdmin && <ShieldCheck className="w-3 h-3 text-secondary flex-shrink-0" />}
+            </div>
+            <p className="text-[10px] text-sidebar-foreground/50 truncate">{currentUser?.email}</p>
           </div>
         </div>
         <button
