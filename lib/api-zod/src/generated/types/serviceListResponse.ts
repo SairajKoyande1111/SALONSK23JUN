@@ -10,4 +10,5 @@ import type { Service } from "./service";
 export interface ServiceListResponse {
   services: Service[];
   categories: string[];
+  types?: string[];
 }

@@ -10,6 +10,9 @@ export interface Service {
   id: string;
   name: string;
   category: string;
+  type?: string;
   price: number;
   duration: number;
+  memberDiscount?: number;
+  memberPrice?: number;
 }

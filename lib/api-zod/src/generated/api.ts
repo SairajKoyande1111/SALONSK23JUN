@@ -122,11 +122,15 @@ export const ListServicesResponse = zod.object({
       id: zod.string(),
       name: zod.string(),
       category: zod.string(),
+      type: zod.string().optional(),
       price: zod.number(),
       duration: zod.number(),
+      memberDiscount: zod.number().optional(),
+      memberPrice: zod.number().optional(),
     }),
   ),
   categories: zod.array(zod.string()),
+  types: zod.array(zod.string()).optional(),
 });
 
 /**
@@ -135,8 +139,11 @@ export const ListServicesResponse = zod.object({
 export const CreateServiceBody = zod.object({
   name: zod.string(),
   category: zod.string(),
+  type: zod.string().optional(),
   price: zod.number(),
   duration: zod.number(),
+  memberDiscount: zod.number().optional(),
+  memberPrice: zod.number().optional(),
 });
 
 /**
