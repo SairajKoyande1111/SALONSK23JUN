@@ -22,6 +22,13 @@ export type CurrentUser = {
   moduleLockEnabled: boolean;
 };
 
+export type PasswordResetRequest = {
+  id: string;
+  email: string;
+  name: string;
+  requestedAt: string;
+};
+
 type AuthContextType = {
   currentUser: CurrentUser | null;
   isMasterAdmin: boolean;
@@ -35,6 +42,9 @@ type AuthContextType = {
   addSubUser: (user: Omit<SubUser, "id">) => void;
   updateSubUser: (user: SubUser) => void;
   deleteSubUser: (id: string) => void;
+  resetRequests: PasswordResetRequest[];
+  dismissResetRequest: (id: string) => void;
+  refreshResetRequests: () => void;
 };
 
 const MASTER_DEFAULT = { email: "thetouch@gmail.com", password: "thetouch@132231" };
@@ -72,6 +82,36 @@ export function saveSubUsers(users: SubUser[]) {
   localStorage.setItem("atsalon_subusers", JSON.stringify(users));
 }
 
+export function getResetRequests(): PasswordResetRequest[] {
+  try {
+    const raw = localStorage.getItem("atsalon_reset_requests");
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return [];
+}
+
+export function saveResetRequests(requests: PasswordResetRequest[]) {
+  localStorage.setItem("atsalon_reset_requests", JSON.stringify(requests));
+}
+
+export function addResetRequest(email: string): "ok" | "not_found" | "already_pending" {
+  const subUsers = getSubUsers();
+  const user = subUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (!user) return "not_found";
+
+  const existing = getResetRequests();
+  if (existing.some(r => r.email.toLowerCase() === email.toLowerCase())) return "already_pending";
+
+  const request: PasswordResetRequest = {
+    id: crypto.randomUUID(),
+    email: user.email,
+    name: user.name,
+    requestedAt: new Date().toISOString(),
+  };
+  saveResetRequests([...existing, request]);
+  return "ok";
+}
+
 export function getCurrentUserFromSession(): CurrentUser | null {
   try {
     const raw = sessionStorage.getItem("atsalon_current_user");
@@ -96,6 +136,7 @@ export function AuthProvider({ children, currentUser }: { children: ReactNode; c
   const [unlockedModules, setUnlockedModules] = useState<Set<string>>(new Set());
   const [lockConfig, setLockConfig] = useState<LockConfig>(() => getStoredLocks());
   const [subUsers, setSubUsers] = useState<SubUser[]>(() => getSubUsers());
+  const [resetRequests, setResetRequests] = useState<PasswordResetRequest[]>(() => getResetRequests());
 
   const unlockModule = (path: string) => {
     setUnlockedModules(prev => new Set([...prev, path]));
@@ -138,6 +179,18 @@ export function AuthProvider({ children, currentUser }: { children: ReactNode; c
     });
   }, []);
 
+  const dismissResetRequest = useCallback((id: string) => {
+    setResetRequests(prev => {
+      const updated = prev.filter(r => r.id !== id);
+      saveResetRequests(updated);
+      return updated;
+    });
+  }, []);
+
+  const refreshResetRequests = useCallback(() => {
+    setResetRequests(getResetRequests());
+  }, []);
+
   return (
     <AuthContext.Provider value={{
       currentUser,
@@ -152,6 +205,9 @@ export function AuthProvider({ children, currentUser }: { children: ReactNode; c
       addSubUser,
       updateSubUser,
       deleteSubUser,
+      resetRequests,
+      dismissResetRequest,
+      refreshResetRequests,
     }}>
       {children}
     </AuthContext.Provider>

@@ -5,6 +5,7 @@ import {
   MonitorCheck, CalendarDays, Users, FileText, Sparkles, Package,
   Briefcase, Tag, BarChart3, UserPlus, Trash2, Pencil, UserCog,
   ChevronDown, ChevronUp, ShieldCheck, ToggleLeft, ToggleRight,
+  KeyRound, Bell, CheckCheck,
 } from "lucide-react";
 import { useAuth, SubUser } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -211,8 +212,89 @@ function UserFormModal({
   );
 }
 
+function ResetPasswordModal({
+  userName,
+  userEmail,
+  onSave,
+  onClose,
+}: {
+  userName: string;
+  userEmail: string;
+  onSave: (newPassword: string) => void;
+  onClose: () => void;
+}) {
+  const [newPassword, setNewPassword] = useState("");
+  const [showPass, setShowPass] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSave = () => {
+    if (newPassword.length < 6) { setError("Password must be at least 6 characters."); return; }
+    onSave(newPassword);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-card rounded-3xl shadow-2xl w-full max-w-sm border border-border/50" style={{ fontFamily: "'Poppins', sans-serif" }}>
+        <div className="px-6 py-5 border-b border-border/50 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center">
+            <KeyRound className="w-5 h-5 text-amber-600" />
+          </div>
+          <div>
+            <h2 className="font-bold text-base text-foreground">Reset Password</h2>
+            <p className="text-xs text-muted-foreground truncate max-w-[180px]">{userName} · {userEmail}</p>
+          </div>
+          <button onClick={onClose} className="ml-auto p-1.5 rounded-lg hover:bg-muted transition-colors">
+            <X className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {error && (
+            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm font-medium">
+              {error}
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-semibold text-muted-foreground mb-1.5">New Password</label>
+            <div className="relative">
+              <input
+                type={showPass ? "text" : "password"}
+                autoFocus
+                placeholder="Min 6 characters"
+                value={newPassword}
+                onChange={e => { setNewPassword(e.target.value); setError(""); }}
+                className="w-full pr-10 p-3 rounded-xl border border-border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+              />
+              <button type="button" onClick={() => setShowPass(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">The user can log in with this new password immediately.</p>
+          </div>
+          <div className="flex gap-3 pt-1">
+            <button onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleSave}
+              className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20">
+              Reset & Dismiss
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
-  const { lockConfig, saveLockConfig, saveMasterCredentials, getMasterCredentials, subUsers, addSubUser, updateSubUser, deleteSubUser } = useAuth();
+  const {
+    lockConfig, saveLockConfig,
+    saveMasterCredentials, getMasterCredentials,
+    subUsers, addSubUser, updateSubUser, deleteSubUser,
+    resetRequests, dismissResetRequest,
+  } = useAuth();
   const { toast } = useToast();
 
   const [adminLoggedIn, setAdminLoggedIn] = useState(false);
@@ -236,6 +318,7 @@ export default function Settings() {
   const [showAddUser, setShowAddUser] = useState(false);
   const [editingUser, setEditingUser] = useState<SubUser | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
+  const [resettingRequest, setResettingRequest] = useState<{ id: string; name: string; email: string } | null>(null);
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,13 +361,13 @@ export default function Settings() {
     toast({ title: "Master credentials updated", description: "New credentials will apply on next login." });
   };
 
-  const handleAddUser = (data: { name: string; email: string; password: string; allowedSections: string[]; moduleLockEnabled: boolean }) => {
+  const handleAddUser = (data: UserFormData) => {
     addSubUser(data);
     setShowAddUser(false);
     toast({ title: "User added", description: `${data.name} can now log in.` });
   };
 
-  const handleUpdateUser = (data: { name: string; email: string; password: string; allowedSections: string[]; moduleLockEnabled: boolean }) => {
+  const handleUpdateUser = (data: UserFormData) => {
     if (!editingUser) return;
     updateSubUser({ ...editingUser, ...data });
     setEditingUser(null);
@@ -295,6 +378,26 @@ export default function Settings() {
     if (!confirm(`Delete user "${user.name}"? They will lose access immediately.`)) return;
     deleteSubUser(user.id);
     toast({ title: "User removed", description: `${user.name} has been deleted.` });
+  };
+
+  const handleResetPassword = (newPass: string) => {
+    if (!resettingRequest) return;
+    const user = subUsers.find(u => u.email.toLowerCase() === resettingRequest.email.toLowerCase());
+    if (user) {
+      updateSubUser({ ...user, password: newPass });
+      dismissResetRequest(resettingRequest.id);
+      setResettingRequest(null);
+      toast({
+        title: "Password reset",
+        description: `${resettingRequest.name}'s password has been updated. Request dismissed.`,
+      });
+    }
+  };
+
+  const handleDismissRequest = (id: string, name: string) => {
+    if (!confirm(`Dismiss reset request from "${name}" without changing their password?`)) return;
+    dismissResetRequest(id);
+    toast({ title: "Request dismissed", description: `Reset request from ${name} dismissed.` });
   };
 
   if (!adminLoggedIn) {
@@ -365,7 +468,12 @@ export default function Settings() {
         {[
           { key: "locks", label: "Module Lock", icon: Lock },
           { key: "credentials", label: "Master Credentials", icon: Key },
-          { key: "users", label: "User Management", icon: Users },
+          {
+            key: "users",
+            label: "User Management",
+            icon: Users,
+            badge: resetRequests.length > 0 ? resetRequests.length : null,
+          },
         ].map(tab => {
           const Icon = tab.icon;
           return (
@@ -378,7 +486,13 @@ export default function Settings() {
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
-              <Icon className="w-4 h-4" /> {tab.label}
+              <Icon className="w-4 h-4" />
+              {tab.label}
+              {"badge" in tab && tab.badge ? (
+                <span className="ml-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                  {tab.badge}
+                </span>
+              ) : null}
             </button>
           );
         })}
@@ -444,10 +558,8 @@ export default function Settings() {
       {activeTab === "credentials" && (
         <div className="bg-card rounded-2xl border border-border/50 shadow-sm">
           <div className="px-6 py-4 border-b border-border/50 flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Key className="w-4 h-4 text-primary" />
-              <h2 className="font-bold text-base text-foreground">Master Admin Credentials</h2>
-            </div>
+            <Key className="w-4 h-4 text-primary" />
+            <h2 className="font-bold text-base text-foreground">Master Admin Credentials</h2>
             <span className="ml-2 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-wide flex items-center gap-1">
               <ShieldCheck className="w-3 h-3" /> Master
             </span>
@@ -486,7 +598,63 @@ export default function Settings() {
       )}
 
       {activeTab === "users" && (
-        <div className="space-y-4">
+        <div className="space-y-5">
+
+          {resetRequests.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
+              <div className="px-5 py-3.5 flex items-center gap-3 border-b border-amber-200">
+                <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+                  <Bell className="w-4 h-4 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-amber-800">Password Reset Requests</p>
+                  <p className="text-xs text-amber-600">{resetRequests.length} pending request{resetRequests.length !== 1 ? "s" : ""}</p>
+                </div>
+              </div>
+              <div className="divide-y divide-amber-200">
+                {resetRequests.map(req => {
+                  const requestedAt = new Date(req.requestedAt);
+                  const timeAgo = (() => {
+                    const diffMs = Date.now() - requestedAt.getTime();
+                    const diffMins = Math.floor(diffMs / 60000);
+                    if (diffMins < 1) return "Just now";
+                    if (diffMins < 60) return `${diffMins}m ago`;
+                    const diffHrs = Math.floor(diffMins / 60);
+                    if (diffHrs < 24) return `${diffHrs}h ago`;
+                    return `${Math.floor(diffHrs / 24)}d ago`;
+                  })();
+
+                  return (
+                    <div key={req.id} className="px-5 py-3.5 flex items-center gap-4">
+                      <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-sm flex-shrink-0">
+                        {req.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-amber-900">{req.name}</p>
+                        <p className="text-xs text-amber-600 truncate">{req.email} · {timeAgo}</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => setResettingRequest({ id: req.id, name: req.name, email: req.email })}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary/90 transition-colors"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" /> Reset Password
+                        </button>
+                        <button
+                          onClick={() => handleDismissRequest(req.id, req.name)}
+                          className="p-1.5 rounded-lg hover:bg-amber-100 transition-colors text-amber-500 hover:text-amber-700"
+                          title="Dismiss without resetting"
+                        >
+                          <CheckCheck className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <div>
               <h2 className="font-bold text-base text-foreground">Sub-Users</h2>
@@ -526,14 +694,25 @@ export default function Settings() {
               <div className="divide-y divide-border/50">
                 {subUsers.map(user => {
                   const isExpanded = expandedUser === user.id;
+                  const hasPendingReset = resetRequests.some(r => r.email.toLowerCase() === user.email.toLowerCase());
                   return (
                     <div key={user.id}>
                       <div className="px-6 py-4 flex items-center gap-4">
-                        <div className="w-9 h-9 rounded-xl bg-secondary/10 flex items-center justify-center text-secondary font-bold text-sm flex-shrink-0">
-                          {user.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)}
+                        <div className="relative">
+                          <div className="w-9 h-9 rounded-xl bg-secondary/10 flex items-center justify-center text-secondary font-bold text-sm">
+                            {user.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)}
+                          </div>
+                          {hasPendingReset && (
+                            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 border-2 border-card" title="Password reset requested" />
+                          )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-foreground">{user.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold text-foreground">{user.name}</p>
+                            {hasPendingReset && (
+                              <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-bold">Reset Requested</span>
+                            )}
+                          </div>
                           <p className="text-xs text-muted-foreground truncate">{user.email}</p>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
@@ -616,6 +795,15 @@ export default function Settings() {
           onSave={handleUpdateUser}
           onClose={() => setEditingUser(null)}
           existingEmails={[getMasterCredentials().email, ...subUsers.filter(u => u.id !== editingUser.id).map(u => u.email)]}
+        />
+      )}
+
+      {resettingRequest && (
+        <ResetPasswordModal
+          userName={resettingRequest.name}
+          userEmail={resettingRequest.email}
+          onSave={handleResetPassword}
+          onClose={() => setResettingRequest(null)}
         />
       )}
     </div>
