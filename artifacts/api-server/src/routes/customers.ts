@@ -303,10 +303,13 @@ router.delete("/customers/:customerId", async (req, res) => {
   const { customerId } = req.params;
   const customer = await Customer.findByIdAndDelete(customerId);
   if (!customer) return res.status(404).json({ error: "Customer not found" });
-  // Auto-revoke all memberships for this customer
-  await CustomerMembership.deleteMany({ customerId: customerId.toString() });
-  // Unlink family members (don't delete them; they remain as standalone customers)
-  await Customer.updateMany({ familyOf: customerId }, { $set: { familyOf: null } });
+  // Collect family member IDs before deleting them
+  const familyMembers = await Customer.find({ familyOf: customerId }).select("_id").lean();
+  const familyIds = familyMembers.map((f: any) => f._id.toString());
+  // Delete all family members
+  await Customer.deleteMany({ familyOf: customerId });
+  // Revoke all memberships for the customer and their family members
+  await CustomerMembership.deleteMany({ customerId: { $in: [customerId.toString(), ...familyIds] } });
   res.status(204).send();
 });
 
