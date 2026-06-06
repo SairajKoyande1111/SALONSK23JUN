@@ -30,7 +30,7 @@ router.get("/dashboard/stats", async (_req, res) => {
   ] = await Promise.all([
     Bill.find({ createdAt: { $gte: new Date(today), $lt: new Date(today + "T23:59:59.999Z") } }).sort({ createdAt: -1 }),
     Customer.countDocuments(),
-    CustomerMembership.countDocuments({ status: "active" }),
+    CustomerMembership.countDocuments({ isActive: true }),
     Appointment.countDocuments({ status: { $in: ["scheduled", "confirmed"] }, appointmentDate: { $gte: today } }),
     Product.find({ isLowStock: true }).select("name stock minStock").lean(),
     Bill.find({ createdAt: { $gte: firstOfMonth } }),
