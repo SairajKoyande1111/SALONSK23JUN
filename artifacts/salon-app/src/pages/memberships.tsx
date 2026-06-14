@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
-import { Crown, Star, Gem, Plus, X, Check, Users, Tag, Trash2, UserPlus, Search, CalendarDays, BadgeCheck, AlertCircle, Pencil, Eye, ChevronDown, ChevronRight } from "lucide-react";
+import { Crown, Star, Gem, Plus, X, Check, Users, Tag, Trash2, UserPlus, Search, CalendarDays, BadgeCheck, AlertCircle, Pencil, Eye, ChevronDown, ChevronRight, FileText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO, addMonths, subDays } from "date-fns";
+import { MembershipInvoiceModal } from "@/components/MembershipInvoiceModal";
 
 const API_BASE = "/api";
 
@@ -72,6 +73,9 @@ export default function Memberships() {
 
   // View member modal
   const [viewMember, setViewMember] = useState<any | null>(null);
+
+  // Membership invoice modal
+  const [invoiceMember, setInvoiceMember] = useState<any | null>(null);
 
   // Expanded rows in Active Members table
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -620,6 +624,13 @@ export default function Memberships() {
                           title="View details"
                         >
                           <Eye className="w-3 h-3" /> View
+                        </button>
+                        <button
+                          onClick={() => setInvoiceMember(cm)}
+                          className="text-xs px-2.5 py-1.5 rounded-lg border border-border/60 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700 transition-colors font-medium flex items-center gap-1"
+                          title="Membership invoice"
+                        >
+                          <FileText className="w-3 h-3" /> Invoice
                         </button>
                         <button
                           onClick={() => openEditMember(cm)}
@@ -1216,6 +1227,18 @@ export default function Memberships() {
           </div>
         </div>
       )}
+
+      {/* Membership Invoice Modal */}
+      {invoiceMember && (() => {
+        const customer = customers.find((c: any) => (c.id || c._id) === invoiceMember.customerId);
+        return (
+          <MembershipInvoiceModal
+            membership={invoiceMember}
+            customer={customer}
+            onClose={() => setInvoiceMember(null)}
+          />
+        );
+      })()}
 
       {/* View Member Modal */}
       {viewMember && (() => {
