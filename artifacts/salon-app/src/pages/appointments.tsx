@@ -5,11 +5,12 @@ import {
 } from "@workspace/api-client-react";
 import {
   format, addMonths, subMonths, startOfMonth, endOfMonth,
-  eachDayOfInterval, getDay, isToday, isSameDay,
+  eachDayOfInterval, getDay, isToday, isSameDay, addDays, subDays,
 } from "date-fns";
 import {
   Calendar as CalendarIcon, User, ChevronLeft, ChevronRight, Plus, X,
-  Search, UserPlus, Pencil, Trash2, Clock, Filter,
+  Search, UserPlus, Pencil, Trash2, Clock, Filter, MoreHorizontal,
+  LayoutGrid, List,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -37,6 +38,44 @@ const legendDotColors: Record<string, string> = {
   completed: "bg-green-500",
   cancelled: "bg-red-400",
 };
+
+// ─── Calendar view constants ──────────────────────────────────────────────────
+const SLOT_HEIGHT = 60;       // px per 30-min slot
+const TIME_COL_W = 72;        // px for the time label column
+const CAL_START = 9 * 60;     // 9:00 AM in minutes from midnight
+const CAL_END   = 21 * 60;    // 9:00 PM in minutes from midnight
+const TOTAL_SLOTS = (CAL_END - CAL_START) / 30; // 24 slots
+
+const calBg: Record<string, string> = {
+  scheduled:   "bg-blue-50 border-blue-300",
+  "in-progress": "bg-amber-50 border-amber-300",
+  completed:   "bg-green-50 border-green-300",
+  cancelled:   "bg-slate-100 border-slate-300 opacity-60",
+};
+const calLeftBar: Record<string, string> = {
+  scheduled:   "bg-blue-400",
+  "in-progress": "bg-amber-400",
+  completed:   "bg-green-500",
+  cancelled:   "bg-slate-400",
+};
+const calTextColor: Record<string, string> = {
+  scheduled:   "text-blue-900",
+  "in-progress": "text-amber-900",
+  completed:   "text-green-900",
+  cancelled:   "text-slate-600",
+};
+
+function timeToMinutes(time: string): number {
+  if (!time) return 0;
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+
+function minutesToTimeStr(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
 
 // ─── Generic searchable select ───────────────────────────────────────────────
 function SearchSelect({ placeholder, value, onChange, options, getLabel, getId }: {
@@ -124,14 +163,7 @@ function AddCustomerModal({ onClose, onSaved, existingPhones }: {
     if (!form.name.trim()) { setNameError("Name is required"); return; }
     setNameError("");
     if (!validatePhone(form.phone)) return;
-
-    // Check if phone already exists
-    if (existingPhones?.has(form.phone)) {
-      setPhoneError("This phone number is already registered in the system.");
-      return;
-    }
-
-    // Validate family member phones (only when membership is selected)
+    if (existingPhones?.has(form.phone)) { setPhoneError("This phone number is already registered in the system."); return; }
     if (form.membershipId && showFamilySection) {
       const validFM = familyMembers.filter(m => m.name.trim());
       const errs: Record<number, string> = {};
@@ -146,7 +178,6 @@ function AddCustomerModal({ onClose, onSaved, existingPhones }: {
       if (Object.keys(errs).length > 0) { setFamilyErrors(errs); return; }
     }
     setFamilyErrors({});
-
     setSaving(true);
     try {
       const res = await fetch(`${API_BASE}/customers`, {
@@ -161,7 +192,6 @@ function AddCustomerModal({ onClose, onSaved, existingPhones }: {
       }
       const created = await res.json();
       const newId = created.id || created._id;
-
       if (form.membershipId) {
         const today = new Date().toISOString().slice(0, 10);
         await fetch(`${API_BASE}/customer-memberships`, {
@@ -169,8 +199,6 @@ function AddCustomerModal({ onClose, onSaved, existingPhones }: {
           body: JSON.stringify({ customerId: newId, membershipId: form.membershipId, startDate: form.membershipStartDate || today }),
         }).catch(() => {});
       }
-
-      // Submit family members via dedicated endpoint (not in POST body)
       if (form.membershipId && showFamilySection) {
         for (const member of familyMembers.filter(m => m.name.trim())) {
           await fetch(`${API_BASE}/customers/${newId}/family-member`, {
@@ -179,7 +207,6 @@ function AddCustomerModal({ onClose, onSaved, existingPhones }: {
           }).catch(() => {});
         }
       }
-
       onSaved(created);
     } catch {
       setPhoneError("Failed to save. Try again.");
@@ -193,9 +220,7 @@ function AddCustomerModal({ onClose, onSaved, existingPhones }: {
       <div className="bg-card rounded-3xl w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between p-6 border-b border-border/50 shrink-0">
           <h2 className="text-2xl font-serif font-bold text-primary">New Customer</h2>
-          <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-muted transition-colors">
-            <X className="w-5 h-5" />
-          </button>
+          <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-muted transition-colors"><X className="w-5 h-5" /></button>
         </div>
         <div className="p-6 space-y-4 overflow-y-auto flex-1">
           <div>
@@ -229,29 +254,20 @@ function AddCustomerModal({ onClose, onSaved, existingPhones }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium mb-1 text-muted-foreground">Date of Birth</label>
-              <input type="date"
-                className="w-full p-3 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none"
+              <input type="date" className="w-full p-3 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none"
                 value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1 text-muted-foreground">Anniversary</label>
-              <input type="date"
-                className="w-full p-3 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none"
+              <input type="date" className="w-full p-3 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none"
                 value={form.anniversary} onChange={e => setForm({ ...form, anniversary: e.target.value })} />
             </div>
           </div>
-
-          {/* Membership */}
           {memberships.length > 0 && (
             <div>
               <label className="block text-sm font-medium mb-1 text-muted-foreground">Membership Plan (optional)</label>
-              <select
-                value={form.membershipId}
-                onChange={e => {
-                  const val = e.target.value;
-                  setForm({ ...form, membershipId: val });
-                  if (!val) { setShowFamilySection(false); setFamilyMembers([]); }
-                }}
+              <select value={form.membershipId}
+                onChange={e => { const val = e.target.value; setForm({ ...form, membershipId: val }); if (!val) { setShowFamilySection(false); setFamilyMembers([]); } }}
                 className="w-full p-3 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none text-sm">
                 <option value="">No membership</option>
                 {memberships.map((m: any) => (
@@ -269,79 +285,73 @@ function AddCustomerModal({ onClose, onSaved, existingPhones }: {
               )}
             </div>
           )}
-
-          {/* Family Members — only when membership is selected */}
           {form.membershipId && (
-          <div className="border border-border/60 rounded-xl overflow-hidden">
-            <button type="button"
-              onClick={() => {
-                if (!showFamilySection) { setShowFamilySection(true); if (familyMembers.length === 0) setFamilyMembers([{ ...EMPTY_FM }]); }
-                else setShowFamilySection(false);
-              }}
-              className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-sm font-semibold">
-              <span className="flex items-center gap-2">
-                <UserPlus className="w-4 h-4 text-primary" />
-                Family Members{familyMembers.filter(m => m.name.trim()).length > 0 ? ` (${familyMembers.filter(m => m.name.trim()).length})` : ""}
-              </span>
-              <span className="text-muted-foreground text-xs">{showFamilySection ? "▲ Hide" : "▼ Add"}</span>
-            </button>
-            {showFamilySection && (
-              <div className="p-4 space-y-3">
-                {familyMembers.map((fm, i) => (
-                  <div key={i} className="bg-muted/20 rounded-xl p-3 border border-border/50 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold text-muted-foreground">Member {i + 1}</p>
-                      <button type="button" onClick={() => setFamilyMembers(prev => prev.filter((_, ii) => ii !== i))}
-                        className="text-xs text-red-500 hover:underline">Remove</button>
-                    </div>
-                    <input type="text" placeholder="Name *" value={fm.name}
-                      onChange={e => setFamilyMembers(prev => prev.map((x, ii) => ii === i ? { ...x, name: e.target.value } : x))}
-                      className="w-full p-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none" />
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <input type="tel" placeholder="Phone (10 digits)" value={fm.phone} maxLength={10}
-                          onChange={e => { setFamilyMembers(prev => prev.map((x, ii) => ii === i ? { ...x, phone: e.target.value.replace(/\D/g, "").slice(0, 10) } : x)); setFamilyErrors(fe => { const n = { ...fe }; delete n[i]; return n; }); }}
-                          className={`w-full p-2 rounded-lg border bg-background text-sm focus:ring-2 outline-none ${familyErrors[i] ? "border-red-400 focus:ring-red-200" : "border-border focus:ring-primary/20"}`} />
-                        {familyErrors[i] && <p className="text-red-500 text-[10px] mt-0.5">{familyErrors[i]}</p>}
+            <div className="border border-border/60 rounded-xl overflow-hidden">
+              <button type="button"
+                onClick={() => { if (!showFamilySection) { setShowFamilySection(true); if (familyMembers.length === 0) setFamilyMembers([{ ...EMPTY_FM }]); } else setShowFamilySection(false); }}
+                className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-sm font-semibold">
+                <span className="flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-primary" />
+                  Family Members{familyMembers.filter(m => m.name.trim()).length > 0 ? ` (${familyMembers.filter(m => m.name.trim()).length})` : ""}
+                </span>
+                <span className="text-muted-foreground text-xs">{showFamilySection ? "▲ Hide" : "▼ Add"}</span>
+              </button>
+              {showFamilySection && (
+                <div className="p-4 space-y-3">
+                  {familyMembers.map((fm, i) => (
+                    <div key={i} className="bg-muted/20 rounded-xl p-3 border border-border/50 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-muted-foreground">Member {i + 1}</p>
+                        <button type="button" onClick={() => setFamilyMembers(prev => prev.filter((_, ii) => ii !== i))}
+                          className="text-xs text-red-500 hover:underline">Remove</button>
                       </div>
-                      <select value={fm.gender}
-                        onChange={e => setFamilyMembers(prev => prev.map((x, ii) => ii === i ? { ...x, gender: e.target.value } : x))}
-                        className="p-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none">
-                        <option value="">Gender</option>
-                        <option value="female">Female</option>
-                        <option value="male">Male</option>
-                      </select>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] text-muted-foreground block mb-0.5">Date of Birth</label>
-                        <input type="date" value={fm.dob}
-                          onChange={e => setFamilyMembers(prev => prev.map((x, ii) => ii === i ? { ...x, dob: e.target.value } : x))}
-                          className="w-full p-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none" />
+                      <input type="text" placeholder="Name *" value={fm.name}
+                        onChange={e => setFamilyMembers(prev => prev.map((x, ii) => ii === i ? { ...x, name: e.target.value } : x))}
+                        className="w-full p-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <input type="tel" placeholder="Phone (10 digits)" value={fm.phone} maxLength={10}
+                            onChange={e => { setFamilyMembers(prev => prev.map((x, ii) => ii === i ? { ...x, phone: e.target.value.replace(/\D/g, "").slice(0, 10) } : x)); setFamilyErrors(fe => { const n = { ...fe }; delete n[i]; return n; }); }}
+                            className={`w-full p-2 rounded-lg border bg-background text-sm focus:ring-2 outline-none ${familyErrors[i] ? "border-red-400 focus:ring-red-200" : "border-border focus:ring-primary/20"}`} />
+                          {familyErrors[i] && <p className="text-red-500 text-[10px] mt-0.5">{familyErrors[i]}</p>}
+                        </div>
+                        <select value={fm.gender}
+                          onChange={e => setFamilyMembers(prev => prev.map((x, ii) => ii === i ? { ...x, gender: e.target.value } : x))}
+                          className="p-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none">
+                          <option value="">Gender</option>
+                          <option value="female">Female</option>
+                          <option value="male">Male</option>
+                        </select>
                       </div>
-                      <div>
-                        <label className="text-[10px] text-muted-foreground block mb-0.5">Anniversary</label>
-                        <input type="date" value={fm.anniversary}
-                          onChange={e => setFamilyMembers(prev => prev.map((x, ii) => ii === i ? { ...x, anniversary: e.target.value } : x))}
-                          className="w-full p-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] text-muted-foreground block mb-0.5">Date of Birth</label>
+                          <input type="date" value={fm.dob}
+                            onChange={e => setFamilyMembers(prev => prev.map((x, ii) => ii === i ? { ...x, dob: e.target.value } : x))}
+                            className="w-full p-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-muted-foreground block mb-0.5">Anniversary</label>
+                          <input type="date" value={fm.anniversary}
+                            onChange={e => setFamilyMembers(prev => prev.map((x, ii) => ii === i ? { ...x, anniversary: e.target.value } : x))}
+                            className="w-full p-2 rounded-lg border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none" />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-                {familyMembers.length < 4 ? (
-                  <button type="button"
-                    onClick={() => setFamilyMembers(prev => [...prev, { ...EMPTY_FM }])}
-                    className="w-full py-2.5 rounded-xl border border-dashed border-primary/40 text-primary text-xs font-semibold hover:bg-primary/5 transition-colors flex items-center justify-center gap-1.5">
-                    <Plus className="w-3.5 h-3.5" /> Add Family Member
-                  </button>
-                ) : (
-                  <p className="text-xs text-muted-foreground text-center py-2 bg-muted/30 rounded-xl">Maximum 4 family members allowed</p>
-                )}
-              </div>
-            )}
-          </div>
+                  ))}
+                  {familyMembers.length < 4 ? (
+                    <button type="button"
+                      onClick={() => setFamilyMembers(prev => [...prev, { ...EMPTY_FM }])}
+                      className="w-full py-2.5 rounded-xl border border-dashed border-primary/40 text-primary text-xs font-semibold hover:bg-primary/5 transition-colors flex items-center justify-center gap-1.5">
+                      <Plus className="w-3.5 h-3.5" /> Add Family Member
+                    </button>
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-2 bg-muted/30 rounded-xl">Maximum 4 family members allowed</p>
+                  )}
+                </div>
+              )}
+            </div>
           )}
-
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose}
               className="flex-1 py-3 rounded-xl border hover:bg-muted font-medium transition-colors">Cancel</button>
@@ -412,9 +422,7 @@ function CustomerSelect({ value, onChange, customers, onCustomerCreated }: {
             <div className="max-h-48 overflow-y-auto">
               <button type="button"
                 className={`w-full text-left px-4 py-2.5 text-sm hover:bg-muted/60 transition-colors font-medium ${!value ? "text-primary bg-primary/5" : ""}`}
-                onClick={() => { onChange(""); setOpen(false); setSearch(""); }}>
-                Walk-in
-              </button>
+                onClick={() => { onChange(""); setOpen(false); setSearch(""); }}>Walk-in</button>
               {filtered.map(c => (
                 <button key={c.id || c._id} type="button"
                   className={`w-full text-left px-4 py-2.5 text-sm hover:bg-muted/60 transition-colors ${(c.id || c._id) === value ? "text-primary bg-primary/5 font-medium" : ""}`}
@@ -464,13 +472,11 @@ function MiniCalendar({ selectedDate, onSelectDate, calendarMonth, onChangeMonth
   return (
     <div className="bg-card border border-border/50 rounded-2xl p-4 shadow-sm select-none">
       <div className="flex items-center justify-between mb-4">
-        <button onClick={() => onChangeMonth(subMonths(calendarMonth, 1))}
-          className="p-1.5 rounded-lg hover:bg-muted transition-colors">
+        <button onClick={() => onChangeMonth(subMonths(calendarMonth, 1))} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
           <ChevronLeft className="w-4 h-4" />
         </button>
         <span className="text-sm font-bold">{format(calendarMonth, "MMMM yyyy")}</span>
-        <button onClick={() => onChangeMonth(addMonths(calendarMonth, 1))}
-          className="p-1.5 rounded-lg hover:bg-muted transition-colors">
+        <button onClick={() => onChangeMonth(addMonths(calendarMonth, 1))} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
@@ -491,18 +497,10 @@ function MiniCalendar({ selectedDate, onSelectDate, calendarMonth, onChangeMonth
               <button
                 onClick={() => onSelectDate(day)}
                 className={`w-8 h-8 rounded-full text-sm flex items-center justify-center transition-colors font-medium
-                  ${isSelected
-                    ? "bg-primary text-white shadow-sm"
-                    : today
-                    ? "border-2 border-primary text-primary font-bold"
-                    : "hover:bg-muted text-foreground"
-                  }`}
-              >
+                  ${isSelected ? "bg-primary text-white shadow-sm" : today ? "border-2 border-primary text-primary font-bold" : "hover:bg-muted text-foreground"}`}>
                 {format(day, "d")}
               </button>
-              {hasAppts && (
-                <div className={`w-1.5 h-1.5 rounded-full mt-0.5 ${isSelected ? "bg-white/80" : "bg-primary"}`} />
-              )}
+              {hasAppts && <div className={`w-1.5 h-1.5 rounded-full mt-0.5 ${isSelected ? "bg-white/80" : "bg-primary"}`} />}
               {!hasAppts && <div className="h-1.5" />}
             </div>
           );
@@ -519,7 +517,7 @@ function MiniCalendar({ selectedDate, onSelectDate, calendarMonth, onChangeMonth
   );
 }
 
-// ─── Appointment Card ─────────────────────────────────────────────────────────
+// ─── List View Appointment Card ───────────────────────────────────────────────
 function AppointmentCard({ appt, onStatusChange, onEdit, onDelete }: {
   appt: any; onStatusChange: (id: string, status: string) => void;
   onEdit: (appt: any) => void; onDelete: (appt: any) => void;
@@ -534,15 +532,11 @@ function AppointmentCard({ appt, onStatusChange, onEdit, onDelete }: {
             <span>{appt.duration || 30} min</span>
           </div>
         </div>
-
         <div className="w-px self-stretch bg-border/50 shrink-0" />
-
         <div className="flex-1 min-w-0 space-y-1.5">
           <div className="flex items-baseline gap-2 flex-wrap">
             <p className="font-bold text-foreground text-base leading-tight">{appt.customerName || "Walk-in"}</p>
-            {appt.customerPhone && (
-              <span className="text-xs text-muted-foreground font-mono">{appt.customerPhone}</span>
-            )}
+            {appt.customerPhone && <span className="text-xs text-muted-foreground font-mono">{appt.customerPhone}</span>}
           </div>
           <div className="flex items-start flex-wrap gap-2 text-sm">
             <div className="flex flex-wrap gap-1.5 items-center">
@@ -559,33 +553,21 @@ function AppointmentCard({ appt, onStatusChange, onEdit, onDelete }: {
             </span>
           </div>
           {appt.notes && (
-            <p className="text-xs text-muted-foreground italic bg-muted/40 rounded-lg px-2 py-1 inline-block">
-              {appt.notes}
-            </p>
+            <p className="text-xs text-muted-foreground italic bg-muted/40 rounded-lg px-2 py-1 inline-block">{appt.notes}</p>
           )}
         </div>
-
         <div className="shrink-0 flex flex-col items-end gap-2">
-          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border capitalize ${statusColors[appt.status] || ""}`}>
-            {appt.status}
-          </span>
+          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border capitalize ${statusColors[appt.status] || ""}`}>{appt.status}</span>
           <div className="flex items-center gap-1.5">
-            <select
-              value={appt.status}
-              onChange={e => onStatusChange(appt.id || appt._id, e.target.value)}
-              className="text-xs border border-border rounded-lg px-2 py-1.5 bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
-            >
-              {STATUS_OPTIONS.map(s => (
-                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-              ))}
+            <select value={appt.status} onChange={e => onStatusChange(appt.id || appt._id, e.target.value)}
+              className="text-xs border border-border rounded-lg px-2 py-1.5 bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer">
+              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
             </select>
-            <button onClick={() => onEdit(appt)}
-              title="Edit"
+            <button onClick={() => onEdit(appt)} title="Edit"
               className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors border border-amber-200">
               <Pencil className="w-3.5 h-3.5" />
             </button>
-            <button onClick={() => onDelete(appt)}
-              title="Delete"
+            <button onClick={() => onDelete(appt)} title="Delete"
               className="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors border border-red-200">
               <Trash2 className="w-3.5 h-3.5" />
             </button>
@@ -597,7 +579,6 @@ function AppointmentCard({ appt, onStatusChange, onEdit, onDelete }: {
 }
 
 // ─── Multi-Service Selector ───────────────────────────────────────────────────
-// selectedServices: [{id, name}] where name may include variant (e.g. "Hair Cut — Short")
 function MultiServiceSelect({ selectedServices, onChange, services, onVariantNeeded }: {
   selectedServices: { id: string; name: string }[];
   onChange: (svc: { id: string; name: string }[]) => void;
@@ -612,10 +593,7 @@ function MultiServiceSelect({ selectedServices, onChange, services, onVariantNee
 
   const selectedIds = selectedServices.map(s => s.id);
   const available = services.filter(s => !selectedIds.includes(s.id || s._id));
-  const filtered = searchText
-    ? available.filter(s => s.name.toLowerCase().includes(searchText.toLowerCase()))
-    : available;
-
+  const filtered = searchText ? available.filter(s => s.name.toLowerCase().includes(searchText.toLowerCase())) : available;
   const pendingSvc = pendingId ? services.find(s => (s.id || s._id) === pendingId) : null;
 
   const selectFromDropdown = (svc: any) => {
@@ -630,15 +608,11 @@ function MultiServiceSelect({ selectedServices, onChange, services, onVariantNee
     if (!pendingId || selectedIds.includes(pendingId)) return;
     const svc = services.find(s => (s.id || s._id) === pendingId);
     if (svc && Array.isArray(svc.types) && svc.types.filter((t: any) => t.name).length > 0 && onVariantNeeded) {
-      // Service has variants — let the parent show the picker
       onVariantNeeded(svc);
-      setSearchText("");
-      setPendingId("");
+      setSearchText(""); setPendingId("");
     } else {
-      // No variants — add directly
       onChange([...selectedServices, { id: pendingId, name: svc?.name || searchText }]);
-      setSearchText("");
-      setPendingId("");
+      setSearchText(""); setPendingId("");
       setShowDropdown(true);
       inputRef.current?.focus();
     }
@@ -654,11 +628,7 @@ function MultiServiceSelect({ selectedServices, onChange, services, onVariantNee
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  const handleSearchChange = (val: string) => {
-    setSearchText(val);
-    setPendingId("");
-    setShowDropdown(true);
-  };
+  const handleSearchChange = (val: string) => { setSearchText(val); setPendingId(""); setShowDropdown(true); };
 
   return (
     <div className="space-y-2" ref={containerRef}>
@@ -679,15 +649,10 @@ function MultiServiceSelect({ selectedServices, onChange, services, onVariantNee
       <div className="relative flex gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Search service..."
-            value={searchText}
-            onChange={e => handleSearchChange(e.target.value)}
+          <input ref={inputRef} type="text" placeholder="Search service..."
+            value={searchText} onChange={e => handleSearchChange(e.target.value)}
             onFocus={() => setShowDropdown(true)}
-            className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none"
-          />
+            className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
           {showDropdown && filtered.length > 0 && (
             <div className="absolute z-20 w-full mt-1 bg-card border border-border/60 rounded-xl shadow-xl overflow-hidden max-h-44 overflow-y-auto">
               {filtered.map(s => (
@@ -712,30 +677,30 @@ function MultiServiceSelect({ selectedServices, onChange, services, onVariantNee
         </div>
         <button type="button" onClick={handleAdd} disabled={!pendingId}
           className="px-4 py-2.5 rounded-xl bg-primary text-white text-xs font-semibold disabled:opacity-40 hover:bg-primary/90 transition-colors shrink-0">
-          {pendingSvc && Array.isArray(pendingSvc.types) && pendingSvc.types.filter((t: any) => t.name).length > 0 && onVariantNeeded
-            ? "Pick Variant"
-            : "Add"}
+          {pendingSvc && Array.isArray(pendingSvc.types) && pendingSvc.types.filter((t: any) => t.name).length > 0 && onVariantNeeded ? "Pick Variant" : "Add"}
         </button>
       </div>
     </div>
   );
 }
 
-// ─── Booking Modal (new appointment) ─────────────────────────────────────────
-function BookingModal({ onClose, onSuccess, customers: initialCustomers, staff, services, defaultDate }: any) {
+// ─── Booking Modal ─────────────────────────────────────────────────────────────
+function BookingModal({ onClose, onSuccess, customers: initialCustomers, staff, services, defaultDate, defaultStaffId, defaultTime }: any) {
   const createAppointment = useCreateAppointment();
   const [customers, setCustomers] = useState(initialCustomers);
   const [selectedServices, setSelectedServices] = useState<{ id: string; name: string }[]>([]);
   const [variantPicker, setVariantPicker] = useState<any | null>(null);
   const [form, setForm] = useState({
-    customerId: "", staffId: "",
+    customerId: "",
+    staffId: defaultStaffId || "",
     appointmentDate: format(defaultDate || new Date(), "yyyy-MM-dd"),
-    appointmentTime: "", notes: "",
+    appointmentTime: defaultTime || "",
+    notes: "",
   });
   const [isLoading, setIsLoading] = useState(false);
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
-  const handlePickVariant = (svc: any, variantName: string, _variantPrice: number) => {
+  const handlePickVariant = (svc: any, variantName: string) => {
     const displayName = `${svc.name} — ${variantName}`;
     setSelectedServices(prev => [...prev, { id: svc.id || svc._id, name: displayName }]);
     setVariantPicker(null);
@@ -758,100 +723,91 @@ function BookingModal({ onClose, onSuccess, customers: initialCustomers, staff, 
 
   return (
     <>
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
-      <div className="bg-card rounded-3xl w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col">
-        <div className="p-6 border-b border-border/50 flex items-center justify-between shrink-0">
-          <h2 className="text-xl font-serif font-bold text-primary">Book Appointment</h2>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted transition-colors"><X className="w-5 h-5" /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Customer</label>
-            <CustomerSelect value={form.customerId} onChange={(id) => set("customerId", id)}
-              customers={customers} onCustomerCreated={(c) => setCustomers((prev: any[]) => [c, ...prev])} />
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+        <div className="bg-card rounded-3xl w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col">
+          <div className="p-6 border-b border-border/50 flex items-center justify-between shrink-0">
+            <h2 className="text-xl font-serif font-bold text-primary">Book Appointment</h2>
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted transition-colors"><X className="w-5 h-5" /></button>
           </div>
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">
-              Services * {selectedServices.length > 0 && <span className="text-primary normal-case font-normal">({selectedServices.length} selected)</span>}
-            </label>
-            <MultiServiceSelect
-              selectedServices={selectedServices}
-              onChange={setSelectedServices}
-              services={services}
-              onVariantNeeded={(svc) => setVariantPicker(svc)}
-            />
-            {selectedServices.length === 0 && <p className="text-xs text-muted-foreground mt-1">Add at least one service</p>}
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Staff (optional)</label>
-            <SearchSelect placeholder="Select staff member" value={form.staffId} onChange={(id) => set("staffId", id)}
-              options={staff} getLabel={(s) => s.name} getId={(s) => s.id || s._id} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
             <div>
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Date *</label>
-              <input type="date" required value={form.appointmentDate} onChange={e => set("appointmentDate", e.target.value)}
-                className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Customer</label>
+              <CustomerSelect value={form.customerId} onChange={(id) => set("customerId", id)}
+                customers={customers} onCustomerCreated={(c) => setCustomers((prev: any[]) => [c, ...prev])} />
             </div>
             <div>
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Time *</label>
-              <input type="time" required value={form.appointmentTime} onChange={e => set("appointmentTime", e.target.value)}
-                className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                Services * {selectedServices.length > 0 && <span className="text-primary normal-case font-normal">({selectedServices.length} selected)</span>}
+              </label>
+              <MultiServiceSelect selectedServices={selectedServices} onChange={setSelectedServices}
+                services={services} onVariantNeeded={(svc) => setVariantPicker(svc)} />
+              {selectedServices.length === 0 && <p className="text-xs text-muted-foreground mt-1">Add at least one service</p>}
             </div>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Notes (optional)</label>
-            <textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2} placeholder="Any special instructions..."
-              className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none resize-none" />
-          </div>
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose}
-              className="flex-1 py-3 rounded-xl border border-border font-semibold text-sm hover:bg-muted transition-colors">Cancel</button>
-            <button type="submit" disabled={isLoading || selectedServices.length === 0}
-              className="flex-1 py-3 rounded-xl bg-primary text-white font-bold text-sm shadow-lg disabled:opacity-50 hover:bg-primary/90 transition-colors">
-              {isLoading ? "Booking..." : "Confirm Booking"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    {/* Variant Picker Popup */}
-    {variantPicker && (
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 animate-in fade-in">
-        <div className="bg-card rounded-2xl w-full max-w-sm shadow-2xl border border-border">
-          <div className="flex items-center justify-between p-5 border-b border-border">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{variantPicker.category}</p>
-              <h3 className="font-bold text-foreground text-lg leading-tight">{variantPicker.name}</h3>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Staff (optional)</label>
+              <SearchSelect placeholder="Select staff member" value={form.staffId} onChange={(id) => set("staffId", id)}
+                options={staff} getLabel={(s) => s.name} getId={(s) => s.id || s._id} />
             </div>
-            <button onClick={() => setVariantPicker(null)} className="p-1.5 rounded-lg bg-muted text-muted-foreground hover:text-foreground transition-colors">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="p-4 space-y-2">
-            <p className="text-xs text-muted-foreground text-center mb-3">Select a variant to add</p>
-            {(variantPicker.types || []).filter((t: any) => t.name).map((v: any) => {
-              const alreadyAdded = selectedServices.some(s => s.id === (variantPicker.id || variantPicker._id) && s.name === `${variantPicker.name} — ${v.name}`);
-              return (
-                <button key={v.name} type="button"
-                  disabled={alreadyAdded}
-                  onClick={() => handlePickVariant(variantPicker, v.name, Number(v.price) || 0)}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors border ${
-                    alreadyAdded ? "opacity-40 cursor-not-allowed bg-muted border-border" : "bg-background hover:bg-primary/5 border-border hover:border-primary/30"
-                  }`}>
-                  <span className="text-sm font-semibold">{v.name}</span>
-                  <div className="flex items-center gap-2">
-                    {v.price > 0 && <span className="text-xs text-muted-foreground">₹{Number(v.price).toLocaleString("en-IN")}</span>}
-                    {alreadyAdded && <span className="text-[10px] text-muted-foreground">Added</span>}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Date *</label>
+                <input type="date" required value={form.appointmentDate} onChange={e => set("appointmentDate", e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Time *</label>
+                <input type="time" required value={form.appointmentTime} onChange={e => set("appointmentTime", e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Notes (optional)</label>
+              <textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2} placeholder="Any special instructions..."
+                className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none resize-none" />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={onClose}
+                className="flex-1 py-3 rounded-xl border border-border font-semibold text-sm hover:bg-muted transition-colors">Cancel</button>
+              <button type="submit" disabled={isLoading || selectedServices.length === 0}
+                className="flex-1 py-3 rounded-xl bg-primary text-white font-bold text-sm shadow-lg disabled:opacity-50 hover:bg-primary/90 transition-colors">
+                {isLoading ? "Booking..." : "Confirm Booking"}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
-    )}
+      {variantPicker && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-card rounded-2xl w-full max-w-sm shadow-2xl border border-border">
+            <div className="flex items-center justify-between p-5 border-b border-border">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{variantPicker.category}</p>
+                <h3 className="font-bold text-foreground text-lg leading-tight">{variantPicker.name}</h3>
+              </div>
+              <button onClick={() => setVariantPicker(null)} className="p-1.5 rounded-lg bg-muted text-muted-foreground hover:text-foreground transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              <p className="text-xs text-muted-foreground text-center mb-3">Select a variant to add</p>
+              {(variantPicker.types || []).filter((t: any) => t.name).map((v: any) => {
+                const alreadyAdded = selectedServices.some(s => s.id === (variantPicker.id || variantPicker._id) && s.name === `${variantPicker.name} — ${v.name}`);
+                return (
+                  <button key={v.name} type="button" disabled={alreadyAdded}
+                    onClick={() => handlePickVariant(variantPicker, v.name)}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors border ${alreadyAdded ? "opacity-40 cursor-not-allowed bg-muted border-border" : "bg-background hover:bg-primary/5 border-border hover:border-primary/30"}`}>
+                    <span className="text-sm font-semibold">{v.name}</span>
+                    <div className="flex items-center gap-2">
+                      {v.price > 0 && <span className="text-xs text-muted-foreground">₹{Number(v.price).toLocaleString("en-IN")}</span>}
+                      {alreadyAdded && <span className="text-[10px] text-muted-foreground">Added</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -861,7 +817,6 @@ function EditModal({ appt, onClose, onSuccess, customers: initialCustomers, staf
   const { toast } = useToast();
   const [customers, setCustomers] = useState(initialCustomers);
 
-  // Initialise selectedServices from existing appt.services (which have serviceName) or fall back to IDs only
   const initSelectedServices = (): { id: string; name: string }[] => {
     if (appt.services && appt.services.length > 0)
       return appt.services.map((s: any) => ({ id: s.serviceId, name: s.serviceName || s.serviceId }));
@@ -873,7 +828,6 @@ function EditModal({ appt, onClose, onSuccess, customers: initialCustomers, staf
   };
   const [selectedServices, setSelectedServices] = useState<{ id: string; name: string }[]>(initSelectedServices);
   const [variantPicker, setVariantPicker] = useState<any | null>(null);
-
   const [form, setForm] = useState({
     customerId: appt.customerId || "",
     staffId: appt.staffId || "",
@@ -915,107 +869,97 @@ function EditModal({ appt, onClose, onSuccess, customers: initialCustomers, staf
 
   return (
     <>
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
-      <div className="bg-card rounded-3xl w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col">
-        <div className="p-6 border-b border-border/50 flex items-center justify-between shrink-0">
-          <h2 className="text-xl font-serif font-bold text-primary">Edit Appointment</h2>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted transition-colors"><X className="w-5 h-5" /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Customer</label>
-            <CustomerSelect value={form.customerId} onChange={(id) => set("customerId", id)}
-              customers={customers} onCustomerCreated={(c) => setCustomers((prev: any[]) => [c, ...prev])} />
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+        <div className="bg-card rounded-3xl w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col">
+          <div className="p-6 border-b border-border/50 flex items-center justify-between shrink-0">
+            <h2 className="text-xl font-serif font-bold text-primary">Edit Appointment</h2>
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted transition-colors"><X className="w-5 h-5" /></button>
           </div>
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">
-              Services * {selectedServices.length > 0 && <span className="text-primary normal-case font-normal">({selectedServices.length} selected)</span>}
-            </label>
-            <MultiServiceSelect
-              selectedServices={selectedServices}
-              onChange={setSelectedServices}
-              services={services}
-              onVariantNeeded={(svc) => setVariantPicker(svc)}
-            />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Staff *</label>
-            <SearchSelect placeholder="Select staff member" value={form.staffId} onChange={(id) => set("staffId", id)}
-              options={staff} getLabel={(s) => s.name} getId={(s) => s.id || s._id} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
             <div>
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Date *</label>
-              <input type="date" required value={form.appointmentDate} onChange={e => set("appointmentDate", e.target.value)}
-                className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Customer</label>
+              <CustomerSelect value={form.customerId} onChange={(id) => set("customerId", id)}
+                customers={customers} onCustomerCreated={(c) => setCustomers((prev: any[]) => [c, ...prev])} />
             </div>
             <div>
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Time *</label>
-              <input type="time" required value={form.appointmentTime} onChange={e => set("appointmentTime", e.target.value)}
-                className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                Services * {selectedServices.length > 0 && <span className="text-primary normal-case font-normal">({selectedServices.length} selected)</span>}
+              </label>
+              <MultiServiceSelect selectedServices={selectedServices} onChange={setSelectedServices}
+                services={services} onVariantNeeded={(svc) => setVariantPicker(svc)} />
             </div>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Status</label>
-            <select value={form.status} onChange={e => set("status", e.target.value)}
-              className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none">
-              {STATUS_OPTIONS.map(s => (
-                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1).replace("-", " ")}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Notes</label>
-            <textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2}
-              className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none resize-none" />
-          </div>
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose}
-              className="flex-1 py-3 rounded-xl border border-border font-semibold text-sm hover:bg-muted transition-colors">Cancel</button>
-            <button type="submit" disabled={isLoading || selectedServices.length === 0}
-              className="flex-1 py-3 rounded-xl bg-primary text-white font-bold text-sm shadow-lg disabled:opacity-50 hover:bg-primary/90 transition-colors">
-              {isLoading ? "Saving..." : "Save Changes"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    {variantPicker && (
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 animate-in fade-in">
-        <div className="bg-card rounded-2xl w-full max-w-sm shadow-2xl border border-border">
-          <div className="flex items-center justify-between p-5 border-b border-border">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{variantPicker.category}</p>
-              <h3 className="font-bold text-foreground text-lg leading-tight">{variantPicker.name}</h3>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Staff (optional)</label>
+              <SearchSelect placeholder="Select staff member" value={form.staffId} onChange={(id) => set("staffId", id)}
+                options={staff} getLabel={(s) => s.name} getId={(s) => s.id || s._id} />
             </div>
-            <button onClick={() => setVariantPicker(null)} className="p-1.5 rounded-lg bg-muted text-muted-foreground hover:text-foreground transition-colors">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="p-4 space-y-2">
-            <p className="text-xs text-muted-foreground text-center mb-3">Select a variant to add</p>
-            {(variantPicker.types || []).filter((t: any) => t.name).map((v: any) => {
-              const alreadyAdded = selectedServices.some(s => s.id === (variantPicker.id || variantPicker._id) && s.name === `${variantPicker.name} — ${v.name}`);
-              return (
-                <button key={v.name} type="button"
-                  disabled={alreadyAdded}
-                  onClick={() => handlePickVariant(variantPicker, v.name)}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors border ${
-                    alreadyAdded ? "opacity-40 cursor-not-allowed bg-muted border-border" : "bg-background hover:bg-primary/5 border-border hover:border-primary/30"
-                  }`}>
-                  <span className="text-sm font-semibold">{v.name}</span>
-                  <div className="flex items-center gap-2">
-                    {v.price > 0 && <span className="text-xs text-muted-foreground">₹{Number(v.price).toLocaleString("en-IN")}</span>}
-                    {alreadyAdded && <span className="text-[10px] text-muted-foreground">Added</span>}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Date *</label>
+                <input type="date" required value={form.appointmentDate} onChange={e => set("appointmentDate", e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Time *</label>
+                <input type="time" required value={form.appointmentTime} onChange={e => set("appointmentTime", e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none" />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Status</label>
+              <select value={form.status} onChange={e => set("status", e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none">
+                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1).replace("-", " ")}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">Notes (optional)</label>
+              <textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2} placeholder="Any special instructions..."
+                className="w-full p-2.5 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/40 outline-none resize-none" />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={onClose}
+                className="flex-1 py-3 rounded-xl border border-border font-semibold text-sm hover:bg-muted transition-colors">Cancel</button>
+              <button type="submit" disabled={isLoading || selectedServices.length === 0}
+                className="flex-1 py-3 rounded-xl bg-primary text-white font-bold text-sm shadow-lg disabled:opacity-50 hover:bg-primary/90 transition-colors">
+                {isLoading ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
-    )}
+      {variantPicker && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-card rounded-2xl w-full max-w-sm shadow-2xl border border-border">
+            <div className="flex items-center justify-between p-5 border-b border-border">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{variantPicker.category}</p>
+                <h3 className="font-bold text-foreground text-lg leading-tight">{variantPicker.name}</h3>
+              </div>
+              <button onClick={() => setVariantPicker(null)} className="p-1.5 rounded-lg bg-muted text-muted-foreground hover:text-foreground transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              <p className="text-xs text-muted-foreground text-center mb-3">Select a variant to add</p>
+              {(variantPicker.types || []).filter((t: any) => t.name).map((v: any) => {
+                const alreadyAdded = selectedServices.some(s => s.id === (variantPicker.id || variantPicker._id) && s.name === `${variantPicker.name} — ${v.name}`);
+                return (
+                  <button key={v.name} type="button" disabled={alreadyAdded}
+                    onClick={() => handlePickVariant(variantPicker, v.name)}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors border ${alreadyAdded ? "opacity-40 cursor-not-allowed bg-muted border-border" : "bg-background hover:bg-primary/5 border-border hover:border-primary/30"}`}>
+                    <span className="text-sm font-semibold">{v.name}</span>
+                    <div className="flex items-center gap-2">
+                      {v.price > 0 && <span className="text-xs text-muted-foreground">₹{Number(v.price).toLocaleString("en-IN")}</span>}
+                      {alreadyAdded && <span className="text-[10px] text-muted-foreground">Added</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -1039,11 +983,8 @@ function DeleteConfirm({ appt, onClose, onConfirm }: {
           <strong>{appt.appointmentTime}</strong>.
         </p>
         <div className="flex gap-3">
-          <button onClick={onClose}
-            className="flex-1 py-3 rounded-xl border font-medium hover:bg-muted transition-colors">Cancel</button>
-          <button
-            onClick={async () => { setLoading(true); await onConfirm(); setLoading(false); }}
-            disabled={loading}
+          <button onClick={onClose} className="flex-1 py-3 rounded-xl border font-medium hover:bg-muted transition-colors">Cancel</button>
+          <button onClick={async () => { setLoading(true); await onConfirm(); setLoading(false); }} disabled={loading}
             className="flex-1 py-3 rounded-xl bg-red-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-50">
             {loading ? "Deleting..." : "Delete"}
           </button>
@@ -1053,15 +994,279 @@ function DeleteConfirm({ appt, onClose, onConfirm }: {
   );
 }
 
-const APPT_PAGE_SIZE = 10;
+// ─── Calendar Appointment Block ───────────────────────────────────────────────
+function CalendarApptBlock({ appt, top, height, onEdit, onDelete, onStatusChange }: {
+  appt: any; top: number; height: number;
+  onEdit: (a: any) => void; onDelete: (a: any) => void;
+  onStatusChange: (id: string, status: string) => void;
+}) {
+  const [showMenu, setShowMenu] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setShowMenu(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  const status = appt.status || "scheduled";
+  const id = appt.id || appt._id;
+
+  const endTimeStr = () => {
+    const min = timeToMinutes(appt.appointmentTime) + (appt.duration || 30);
+    return format(new Date(2020, 0, 1, Math.floor(min / 60), min % 60), "h:mm a");
+  };
+  const startTimeStr = appt.appointmentTime
+    ? format(new Date(2020, 0, 1, ...appt.appointmentTime.split(":").map(Number) as [number, number]), "h:mm a")
+    : "";
+
+  const serviceName = appt.services?.length > 0
+    ? appt.services.map((s: any) => s.serviceName).join(", ")
+    : appt.serviceName || "";
+
+  return (
+    <div ref={ref}
+      className={`absolute left-1 right-1 rounded-lg border overflow-visible cursor-pointer shadow-sm hover:shadow-md transition-shadow z-[5] ${calBg[status] || calBg.scheduled}`}
+      style={{ top: top + 2, height: Math.max(height - 4, 22) }}
+      onMouseEnter={() => !showMenu && setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      {/* Left accent bar */}
+      <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-lg ${calLeftBar[status] || calLeftBar.scheduled}`} />
+
+      {/* Content */}
+      <div className={`h-full pl-2.5 pr-6 py-1 flex flex-col overflow-hidden ${calTextColor[status] || calTextColor.scheduled}`}>
+        {height >= 28 && (
+          <p className="text-[10px] font-semibold opacity-75 leading-tight truncate">
+            {startTimeStr}–{endTimeStr()}
+          </p>
+        )}
+        {height >= 18 && (
+          <p className="text-xs font-bold leading-tight truncate">
+            {appt.customerName || "Walk-in"}
+          </p>
+        )}
+        {height >= 44 && (
+          <p className="text-[10px] truncate opacity-80 leading-tight">{serviceName}</p>
+        )}
+      </div>
+
+      {/* 3-dot menu button */}
+      <button
+        className="absolute top-0.5 right-0.5 w-5 h-5 flex items-center justify-center rounded bg-black/10 hover:bg-black/20 transition-colors z-10"
+        onClick={e => { e.stopPropagation(); setShowMenu(m => !m); setShowTooltip(false); }}
+      >
+        <MoreHorizontal className="w-3 h-3" />
+      </button>
+
+      {/* Context menu */}
+      {showMenu && (
+        <div className="absolute right-0 top-6 bg-white dark:bg-card rounded-xl shadow-2xl border border-border z-[60] overflow-hidden min-w-[160px]"
+          onClick={e => e.stopPropagation()}>
+          <div className="px-3 py-2.5 border-b border-border/50 bg-muted/30">
+            <p className="text-xs font-bold truncate">{appt.customerName || "Walk-in"}</p>
+            <p className="text-[10px] text-muted-foreground truncate">{serviceName}</p>
+          </div>
+          <div className="py-1">
+            <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Change Status</p>
+            {STATUS_OPTIONS.filter(s => s !== status).map(s => (
+              <button key={s}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/60 transition-colors capitalize"
+                onClick={() => { onStatusChange(id, s); setShowMenu(false); }}>
+                Mark as {s.replace("-", " ")}
+              </button>
+            ))}
+            <div className="border-t border-border/50 my-1" />
+            <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center gap-2"
+              onClick={() => { onEdit(appt); setShowMenu(false); }}>
+              <Pencil className="w-3 h-3" /> Edit
+            </button>
+            <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-600 transition-colors flex items-center gap-2"
+              onClick={() => { onDelete(appt); setShowMenu(false); }}>
+              <Trash2 className="w-3 h-3" /> Delete
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Hover tooltip */}
+      {showTooltip && !showMenu && (
+        <div className="absolute left-full ml-2 top-0 bg-white dark:bg-card rounded-xl shadow-2xl border border-border z-[60] p-3 w-52 pointer-events-none"
+          style={{ maxWidth: "220px" }}>
+          <p className="text-xs font-bold text-foreground">{appt.customerName || "Walk-in"}</p>
+          {appt.customerPhone && <p className="text-[11px] text-muted-foreground mt-0.5">{appt.customerPhone}</p>}
+          <p className="text-[11px] text-muted-foreground mt-1">{startTimeStr} – {endTimeStr()} · {appt.duration || 30} min</p>
+          {serviceName && <p className="text-[11px] font-medium text-primary mt-1">{serviceName}</p>}
+          {appt.staffName && <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1"><User className="w-2.5 h-2.5" />{appt.staffName}</p>}
+          {appt.notes && (
+            <p className="text-[11px] italic text-muted-foreground mt-2 border-t border-border/50 pt-2">{appt.notes}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Calendar Grid ────────────────────────────────────────────────────────────
+function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, onDelete, onStatusChange, loading }: {
+  appointments: any[]; staff: any[]; selectedDate: Date;
+  onSlotClick: (staffId: string, minutes: number) => void;
+  onEdit: (a: any) => void; onDelete: (a: any) => void;
+  onStatusChange: (id: string, status: string) => void;
+  loading: boolean;
+}) {
+  const [nowMin, setNowMin] = useState(() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); });
+  useEffect(() => {
+    const t = setInterval(() => { const n = new Date(); setNowMin(n.getHours() * 60 + n.getMinutes()); }, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const isSelectedToday = isSameDay(selectedDate, new Date());
+  const showNowLine = isSelectedToday && nowMin >= CAL_START && nowMin <= CAL_END;
+  const nowTop = ((nowMin - CAL_START) / 30) * SLOT_HEIGHT;
+
+  const slots = useMemo(() => Array.from({ length: TOTAL_SLOTS }, (_, i) => CAL_START + i * 30), []);
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-card border border-border/50 rounded-2xl">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+          <p className="text-sm">Loading appointments...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!staff.length) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-card border border-border/50 rounded-2xl">
+        <div className="text-center">
+          <User className="w-12 h-12 text-muted-foreground/20 mx-auto mb-3" />
+          <p className="text-muted-foreground font-medium">No staff members found</p>
+          <p className="text-sm text-muted-foreground mt-1">Add staff to see the calendar view.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-border/50 bg-card flex-1">
+      {/* Staff header row */}
+      <div className="flex border-b border-border/50 bg-muted/20 shrink-0">
+        <div style={{ width: TIME_COL_W, minWidth: TIME_COL_W }} className="shrink-0 border-r border-border/30 flex items-center justify-center">
+          <CalendarIcon className="w-4 h-4 text-muted-foreground" />
+        </div>
+        {staff.map(s => {
+          const id = s.id || s._id;
+          const count = appointments.filter(a => {
+            const aId = a.staffId?.toString?.() || a.staffId;
+            return aId === id?.toString();
+          }).length;
+          return (
+            <div key={id}
+              className="flex-1 min-w-[120px] py-2.5 px-2 border-r border-border/30 flex flex-col items-center gap-1">
+              <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
+                {s.name.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2)}
+              </div>
+              <p className="text-xs font-semibold text-center leading-tight">{s.name}</p>
+              <span className="text-[10px] text-muted-foreground">{count > 0 ? `${count} appt${count !== 1 ? "s" : ""}` : "Free"}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Scrollable grid */}
+      <div className="flex overflow-auto flex-1">
+        {/* Time labels column */}
+        <div style={{ width: TIME_COL_W, minWidth: TIME_COL_W }} className="shrink-0 border-r border-border/30">
+          {slots.map(min => {
+            const h = Math.floor(min / 60);
+            const m = min % 60;
+            return (
+              <div key={min} style={{ height: SLOT_HEIGHT }}
+                className={`border-b flex items-start justify-end pr-2.5 pt-1.5 ${m === 0 ? "border-border/40" : "border-border/10"}`}>
+                {m === 0 && (
+                  <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">
+                    {format(new Date(2020, 0, 1, h, 0), "h:mm a")}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Staff columns + time indicator overlay */}
+        <div className="flex flex-1 relative">
+          {/* Current time line */}
+          {showNowLine && (
+            <div className="absolute left-0 right-0 z-20 flex items-center pointer-events-none" style={{ top: nowTop }}>
+              <div className="w-2.5 h-2.5 bg-red-500 rounded-full shrink-0 -translate-x-1.5 shadow-sm" />
+              <div className="flex-1 h-0.5 bg-red-500/70" />
+            </div>
+          )}
+
+          {/* Individual staff columns */}
+          {staff.map(s => {
+            const staffId = s.id || s._id;
+            const staffAppts = appointments.filter(a => {
+              const aId = a.staffId?.toString?.() || a.staffId;
+              return aId === staffId?.toString();
+            });
+
+            return (
+              <div key={staffId} className="flex-1 min-w-[120px] border-r border-border/20 relative overflow-visible">
+                {/* Slot background cells */}
+                {slots.map(min => (
+                  <div key={min} style={{ height: SLOT_HEIGHT }}
+                    className={`border-b cursor-pointer transition-colors group ${min % 60 === 0 ? "border-border/30" : "border-border/10"} hover:bg-primary/5`}
+                    onClick={() => onSlotClick(staffId, min)}
+                  >
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity h-full flex items-center justify-center">
+                      <Plus className="w-3.5 h-3.5 text-primary/40" />
+                    </div>
+                  </div>
+                ))}
+
+                {/* Appointment blocks */}
+                {staffAppts.map(appt => {
+                  const apptMin = timeToMinutes(appt.appointmentTime);
+                  if (apptMin < CAL_START || apptMin >= CAL_END) return null;
+                  const top = ((apptMin - CAL_START) / 30) * SLOT_HEIGHT;
+                  const height = Math.max(((appt.duration || 30) / 30) * SLOT_HEIGHT, 24);
+                  return (
+                    <CalendarApptBlock
+                      key={appt.id || appt._id}
+                      appt={appt} top={top} height={height}
+                      onEdit={onEdit} onDelete={onDelete} onStatusChange={onStatusChange}
+                    />
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
+const APPT_PAGE_SIZE = 10;
+
 export default function Appointments() {
   const { toast } = useToast();
+  const [view, setView] = useState<"calendar" | "list">("calendar");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [showCalPanel, setShowCalPanel] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [showBookingModal, setShowBookingModal] = useState(false);
+  const [defaultBookingStaff, setDefaultBookingStaff] = useState("");
+  const [defaultBookingTime, setDefaultBookingTime] = useState("");
   const [editingAppt, setEditingAppt] = useState<any>(null);
   const [deletingAppt, setDeletingAppt] = useState<any>(null);
   const [apptPage, setApptPage] = useState(1);
@@ -1082,7 +1287,6 @@ export default function Appointments() {
   const dateStr = format(selectedDate, "yyyy-MM-dd");
   const monthStr = format(calendarMonth, "yyyy-MM");
 
-  // Fetch day appointments
   const fetchDayAppointments = async () => {
     setDayLoading(true);
     try {
@@ -1096,7 +1300,6 @@ export default function Appointments() {
     }
   };
 
-  // Fetch month appointments for calendar dots
   const fetchMonthMarkers = async () => {
     try {
       const res = await fetch(`${API_BASE}/appointments?month=${monthStr}`);
@@ -1141,6 +1344,12 @@ export default function Appointments() {
     }
   };
 
+  const handleSlotClick = (staffId: string, minutes: number) => {
+    setDefaultBookingStaff(staffId);
+    setDefaultBookingTime(minutesToTimeStr(minutes));
+    setShowBookingModal(true);
+  };
+
   const filtered = useMemo(() =>
     statusFilter === "all"
       ? dayAppointments
@@ -1159,155 +1368,202 @@ export default function Appointments() {
     return counts;
   }, [dayAppointments]);
 
-  const isToday2 = isSameDay(selectedDate, new Date());
+  const isSelectedToday = isSameDay(selectedDate, new Date());
 
   return (
-    <div className="p-6 max-w-7xl mx-auto animate-in fade-in duration-500" style={{ fontFamily: "'Poppins', sans-serif" }}>
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-serif font-bold text-primary">Appointments</h1>
-          <p className="text-muted-foreground mt-1" style={{ fontFamily: "'Poppins', sans-serif" }}>Schedule and manage client appointments.</p>
+    <div className="flex flex-col h-full overflow-hidden" style={{ fontFamily: "'Poppins', sans-serif" }}>
+
+      {/* ── Top Header Bar ── */}
+      <div className="shrink-0 px-6 py-3 border-b border-border/50 bg-background flex items-center gap-3 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl font-serif font-bold text-primary leading-tight">Appointments</h1>
+          <p className="text-xs text-muted-foreground hidden sm:block">
+            {format(selectedDate, "EEEE, dd MMMM yyyy")}
+            {isSelectedToday && <span className="ml-1.5 text-primary font-semibold">· Today</span>}
+          </p>
         </div>
+
+        {/* View toggle */}
+        <div className="flex bg-muted rounded-xl p-1 gap-0.5">
+          <button onClick={() => setView("calendar")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${view === "calendar" ? "bg-white shadow text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+            <LayoutGrid className="w-3.5 h-3.5" /> Calendar
+          </button>
+          <button onClick={() => setView("list")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${view === "list" ? "bg-white shadow text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+            <List className="w-3.5 h-3.5" /> List
+          </button>
+        </div>
+
+        {/* Date navigation */}
+        <div className="flex items-center gap-1">
+          <button onClick={() => handleSelectDate(subDays(selectedDate, 1))}
+            className="p-2 rounded-xl border border-border hover:bg-muted transition-colors">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button onClick={() => handleSelectDate(new Date())}
+            className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-colors ${isSelectedToday ? "border-primary bg-primary/5 text-primary" : "border-border hover:bg-muted"}`}>
+            Today
+          </button>
+          <span className="text-sm font-bold min-w-[110px] text-center select-none">
+            {format(selectedDate, "dd MMM yyyy")}
+          </span>
+          <button onClick={() => handleSelectDate(addDays(selectedDate, 1))}
+            className="p-2 rounded-xl border border-border hover:bg-muted transition-colors">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Mini calendar toggle */}
+        <button onClick={() => setShowCalPanel(p => !p)}
+          title="Toggle mini calendar"
+          className={`p-2 rounded-xl border transition-colors ${showCalPanel ? "border-primary bg-primary/5 text-primary" : "border-border hover:bg-muted"}`}>
+          <CalendarIcon className="w-4 h-4" />
+        </button>
+
+        {/* Book button */}
         <button
-          onClick={() => setShowBookingModal(true)}
-          className="bg-secondary text-white px-6 py-3 rounded-xl font-semibold hover:bg-secondary/90 transition-colors shadow-lg shadow-secondary/20 flex items-center gap-2"
-          style={{ fontFamily: "'Poppins', sans-serif" }}>
-          <Plus className="w-5 h-5" /> Book Appointment
+          onClick={() => { setDefaultBookingStaff(""); setDefaultBookingTime(""); setShowBookingModal(true); }}
+          className="bg-secondary text-white px-4 py-2 rounded-xl font-semibold text-sm flex items-center gap-2 hover:bg-secondary/90 transition-colors shadow-lg shadow-secondary/20">
+          <Plus className="w-4 h-4" /> Book
         </button>
       </div>
 
-      <div className="flex gap-6 items-start">
-        {/* Left — Mini Calendar */}
-        <div className="w-64 shrink-0 space-y-4">
-          <MiniCalendar
-            selectedDate={selectedDate}
-            onSelectDate={handleSelectDate}
-            calendarMonth={calendarMonth}
-            onChangeMonth={setCalendarMonth}
-            markedDates={markedDates}
-          />
-          {/* Legend */}
-          <div className="bg-card border border-border/50 rounded-2xl p-4 shadow-sm space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Legend</p>
-            {STATUS_OPTIONS.map(s => (
-              <div key={s} className="flex items-center gap-2 text-xs">
-                <span className={`inline-block w-2.5 h-2.5 rounded-full ${legendDotColors[s] || "bg-gray-400"}`} />
-                <span className="capitalize text-muted-foreground">{s.replace("-", " ")}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* ── Main body ── */}
+      <div className="flex-1 overflow-hidden flex gap-0">
 
-        {/* Right — Appointment List */}
-        <div className="flex-1 min-w-0">
-          {/* Date Header */}
-          <div className="bg-card border border-border/50 rounded-2xl px-5 py-4 mb-4 flex items-center justify-between shadow-sm">
-            <div className="flex items-center gap-3">
-              <CalendarIcon className="w-5 h-5 text-primary" />
-              <div>
-                <p className="font-bold text-base">{format(selectedDate, "EEEE, dd MMMM yyyy")}</p>
-                {isToday2 && <p className="text-xs text-primary font-semibold">Today</p>}
-              </div>
+        {/* Mini calendar side panel */}
+        {showCalPanel && (
+          <div className="w-64 shrink-0 p-4 border-r border-border/50 overflow-y-auto space-y-4 bg-background">
+            <MiniCalendar
+              selectedDate={selectedDate}
+              onSelectDate={handleSelectDate}
+              calendarMonth={calendarMonth}
+              onChangeMonth={setCalendarMonth}
+              markedDates={markedDates}
+            />
+            {/* Legend */}
+            <div className="bg-card border border-border/50 rounded-2xl p-4 shadow-sm space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Legend</p>
+              {STATUS_OPTIONS.map(s => (
+                <div key={s} className="flex items-center gap-2 text-xs">
+                  <span className={`inline-block w-2.5 h-2.5 rounded-full ${legendDotColors[s] || "bg-gray-400"}`} />
+                  <span className="capitalize text-muted-foreground">{s.replace("-", " ")}</span>
+                </div>
+              ))}
             </div>
-            <div className="flex items-center gap-1">
-              <button onClick={() => handleSelectDate(new Date(selectedDate.getTime() - 86400000))}
-                className="p-2 rounded-xl border border-border hover:bg-muted transition-colors">
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button onClick={() => handleSelectDate(new Date())}
-                className="px-3 py-2 text-xs rounded-xl border border-border hover:bg-muted transition-colors font-medium">
-                Today
-              </button>
-              <button onClick={() => handleSelectDate(new Date(selectedDate.getTime() + 86400000))}
-                className="p-2 rounded-xl border border-border hover:bg-muted transition-colors">
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Status Filter Tabs */}
-          <div className="flex items-center gap-2 mb-4 flex-wrap">
-            <Filter className="w-4 h-4 text-muted-foreground shrink-0" />
-            {["all", ...STATUS_OPTIONS].map(s => (
-              <button key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition-colors border
-                  ${statusFilter === s
-                    ? "bg-primary text-white border-primary shadow-sm"
-                    : "border-border text-muted-foreground hover:border-primary/40 hover:text-primary"
-                  }`}>
-                {s === "all" ? "All" : s} ({statusCounts[s] || 0})
-              </button>
-            ))}
-          </div>
-
-          {/* Appointments */}
-          {dayLoading ? (
-            <div className="flex flex-col items-center justify-center h-56 gap-3 text-muted-foreground bg-card border border-border/50 rounded-2xl">
-              <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-              <p className="text-sm">Loading appointments...</p>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-56 bg-card rounded-2xl border border-border/50 text-center px-4">
-              <CalendarIcon className="w-14 h-14 mx-auto text-muted-foreground/20 mb-3" />
-              <p className="text-base font-semibold text-muted-foreground">
-                {statusFilter === "all" ? "No appointments for this day" : `No ${statusFilter} appointments`}
-              </p>
-              <p className="text-sm text-muted-foreground mt-1">
-                {statusFilter === "all"
-                  ? 'Click "Book Appointment" to schedule one.'
-                  : `Try a different filter or book a new appointment.`}
-              </p>
-            </div>
-          ) : (
-            <>
-              <div className="space-y-3">
-                {paginatedAppts.map(appt => (
-                  <AppointmentCard
-                    key={appt.id || appt._id}
-                    appt={appt}
-                    onStatusChange={handleStatusChange}
-                    onEdit={setEditingAppt}
-                    onDelete={setDeletingAppt}
-                  />
+            {/* Day summary */}
+            <div className="bg-card border border-border/50 rounded-2xl p-4 shadow-sm">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Day Summary</p>
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Total</span>
+                  <span className="font-bold text-foreground">{dayAppointments.length}</span>
+                </div>
+                {STATUS_OPTIONS.map(s => statusCounts[s] > 0 && (
+                  <div key={s} className="flex justify-between text-xs">
+                    <span className="capitalize text-muted-foreground">{s.replace("-", " ")}</span>
+                    <span className={`font-semibold ${statusColors[s]?.split(" ")[1] || ""}`}>{statusCounts[s]}</span>
+                  </div>
                 ))}
               </div>
-              {totalApptPages > 1 && (
-                <div className="mt-4 flex flex-wrap justify-between items-center gap-3 text-sm text-muted-foreground bg-card border border-border/50 rounded-2xl px-5 py-3">
-                  <span>Showing {Math.min((apptPage - 1) * APPT_PAGE_SIZE + 1, filtered.length)}–{Math.min(apptPage * APPT_PAGE_SIZE, filtered.length)} of {filtered.length}</span>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => setApptPage(1)} disabled={apptPage === 1}
-                      className="px-2 py-1 rounded-lg border border-border hover:bg-muted transition-colors disabled:opacity-40 text-xs font-medium">«</button>
-                    <button onClick={() => setApptPage(p => Math.max(1, p - 1))} disabled={apptPage === 1}
-                      className="px-2.5 py-1 rounded-lg border border-border hover:bg-muted transition-colors disabled:opacity-40 text-xs font-medium">‹</button>
-                    {Array.from({ length: totalApptPages }, (_, i) => i + 1)
-                      .filter(p => p === 1 || p === totalApptPages || Math.abs(p - apptPage) <= 1)
-                      .reduce<(number | "...")[]>((acc, p, idx, arr) => {
-                        if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push("...");
-                        acc.push(p); return acc;
-                      }, [])
-                      .map((p, i) => p === "..." ? (
-                        <span key={`e${i}`} className="px-2 text-muted-foreground">…</span>
-                      ) : (
-                        <button key={p} onClick={() => setApptPage(p as number)}
-                          className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors ${apptPage === p ? "bg-primary text-white border-primary" : "border-border hover:bg-muted"}`}>
-                          {p}
-                        </button>
-                      ))}
-                    <button onClick={() => setApptPage(p => Math.min(totalApptPages, p + 1))} disabled={apptPage === totalApptPages}
-                      className="px-2.5 py-1 rounded-lg border border-border hover:bg-muted transition-colors disabled:opacity-40 text-xs font-medium">›</button>
-                    <button onClick={() => setApptPage(totalApptPages)} disabled={apptPage === totalApptPages}
-                      className="px-2 py-1 rounded-lg border border-border hover:bg-muted transition-colors disabled:opacity-40 text-xs font-medium">»</button>
-                  </div>
+            </div>
+          </div>
+        )}
+
+        {/* Calendar / List view */}
+        <div className="flex-1 overflow-hidden p-4 flex flex-col">
+
+          {view === "calendar" ? (
+            <CalendarGrid
+              appointments={dayAppointments}
+              staff={staff}
+              selectedDate={selectedDate}
+              onSlotClick={handleSlotClick}
+              onEdit={setEditingAppt}
+              onDelete={setDeletingAppt}
+              onStatusChange={handleStatusChange}
+              loading={dayLoading}
+            />
+          ) : (
+            /* ── List view ── */
+            <div className="flex-1 overflow-y-auto space-y-3">
+              {/* Status filter tabs */}
+              <div className="flex items-center gap-2 flex-wrap pb-1">
+                <Filter className="w-4 h-4 text-muted-foreground shrink-0" />
+                {["all", ...STATUS_OPTIONS].map(s => (
+                  <button key={s} onClick={() => setStatusFilter(s)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition-colors border ${statusFilter === s ? "bg-primary text-white border-primary shadow-sm" : "border-border text-muted-foreground hover:border-primary/40 hover:text-primary"}`}>
+                    {s === "all" ? "All" : s} ({statusCounts[s] || 0})
+                  </button>
+                ))}
+              </div>
+
+              {dayLoading ? (
+                <div className="flex flex-col items-center justify-center h-56 gap-3 text-muted-foreground bg-card border border-border/50 rounded-2xl">
+                  <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                  <p className="text-sm">Loading appointments...</p>
                 </div>
+              ) : filtered.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-56 bg-card rounded-2xl border border-border/50 text-center px-4">
+                  <CalendarIcon className="w-14 h-14 mx-auto text-muted-foreground/20 mb-3" />
+                  <p className="text-base font-semibold text-muted-foreground">
+                    {statusFilter === "all" ? "No appointments for this day" : `No ${statusFilter} appointments`}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {statusFilter === "all" ? 'Click "Book" to schedule one.' : "Try a different filter."}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-3">
+                    {paginatedAppts.map(appt => (
+                      <AppointmentCard
+                        key={appt.id || appt._id}
+                        appt={appt}
+                        onStatusChange={handleStatusChange}
+                        onEdit={setEditingAppt}
+                        onDelete={setDeletingAppt}
+                      />
+                    ))}
+                  </div>
+                  {totalApptPages > 1 && (
+                    <div className="mt-4 flex flex-wrap justify-between items-center gap-3 text-sm text-muted-foreground bg-card border border-border/50 rounded-2xl px-5 py-3">
+                      <span>Showing {Math.min((apptPage - 1) * APPT_PAGE_SIZE + 1, filtered.length)}–{Math.min(apptPage * APPT_PAGE_SIZE, filtered.length)} of {filtered.length}</span>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => setApptPage(1)} disabled={apptPage === 1}
+                          className="px-2 py-1 rounded-lg border border-border hover:bg-muted transition-colors disabled:opacity-40 text-xs font-medium">«</button>
+                        <button onClick={() => setApptPage(p => Math.max(1, p - 1))} disabled={apptPage === 1}
+                          className="px-2.5 py-1 rounded-lg border border-border hover:bg-muted transition-colors disabled:opacity-40 text-xs font-medium">‹</button>
+                        {Array.from({ length: totalApptPages }, (_, i) => i + 1)
+                          .filter(p => p === 1 || p === totalApptPages || Math.abs(p - apptPage) <= 1)
+                          .reduce<(number | "...")[]>((acc, p, idx, arr) => {
+                            if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push("...");
+                            acc.push(p); return acc;
+                          }, [])
+                          .map((p, i) => p === "..." ? (
+                            <span key={`e${i}`} className="px-2 text-muted-foreground">…</span>
+                          ) : (
+                            <button key={p} onClick={() => setApptPage(p as number)}
+                              className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors ${apptPage === p ? "bg-primary text-white border-primary" : "border-border hover:bg-muted"}`}>
+                              {p}
+                            </button>
+                          ))}
+                        <button onClick={() => setApptPage(p => Math.min(totalApptPages, p + 1))} disabled={apptPage === totalApptPages}
+                          className="px-2.5 py-1 rounded-lg border border-border hover:bg-muted transition-colors disabled:opacity-40 text-xs font-medium">›</button>
+                        <button onClick={() => setApptPage(totalApptPages)} disabled={apptPage === totalApptPages}
+                          className="px-2 py-1 rounded-lg border border-border hover:bg-muted transition-colors disabled:opacity-40 text-xs font-medium">»</button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
-            </>
+            </div>
           )}
         </div>
       </div>
 
-      {/* Modals */}
+      {/* ── Modals ── */}
       {showBookingModal && (
         <BookingModal
           onClose={() => setShowBookingModal(false)}
@@ -1320,6 +1576,8 @@ export default function Appointments() {
           staff={staff}
           services={services}
           defaultDate={selectedDate}
+          defaultStaffId={defaultBookingStaff}
+          defaultTime={defaultBookingTime}
         />
       )}
 

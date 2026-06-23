@@ -1,21 +1,24 @@
 import { Link, useLocation } from "wouter";
-import { 
-  LayoutDashboard, 
-  MonitorCheck, 
-  CalendarDays, 
-  Users, 
-  Sparkles, 
-  Package, 
-  Briefcase, 
-  Tag, 
-  BarChart3, 
+import {
+  LayoutDashboard,
+  MonitorCheck,
+  CalendarDays,
+  Users,
+  Sparkles,
+  Package,
+  Briefcase,
+  Tag,
+  BarChart3,
   FileText,
   LogOut,
   Settings,
   Lock,
   ShieldCheck,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import clsx from "clsx";
+import { useState } from "react";
 import { useAuth } from "@/contexts/auth";
 import { clearSession } from "@/contexts/auth";
 
@@ -36,6 +39,18 @@ export function Sidebar() {
   const [location] = useLocation();
   const { lockConfig, currentUser, isMasterAdmin } = useAuth();
 
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem("atsalon_sidebar_collapsed") === "true"; } catch { return false; }
+  });
+
+  const toggleCollapsed = () => {
+    setCollapsed(c => {
+      const next = !c;
+      try { localStorage.setItem("atsalon_sidebar_collapsed", String(next)); } catch {}
+      return next;
+    });
+  };
+
   const handleLogout = () => {
     clearSession();
     window.location.reload();
@@ -52,34 +67,55 @@ export function Sidebar() {
     : "U";
 
   return (
-    <div className="w-64 h-screen bg-sidebar flex flex-col shadow-2xl z-50">
-      <div className="p-6 flex flex-col">
-        <h1 className="text-sidebar-foreground text-lg font-extrabold leading-tight" style={{ fontFamily: "'Poppins', sans-serif" }}>
-          AT SMART SALON
-        </h1>
-        <p className="text-sidebar-foreground/60 text-[10px] font-medium uppercase tracking-[0.12em] mt-0.5" style={{ fontFamily: "'Poppins', sans-serif" }}>
-          Salon Management Software
-        </p>
+    <div
+      className={clsx(
+        "h-screen bg-sidebar flex flex-col shadow-2xl z-50 transition-all duration-300 shrink-0",
+        collapsed ? "w-[68px]" : "w-64"
+      )}
+    >
+      {/* Logo */}
+      <div className={clsx("p-4 flex flex-col", collapsed && "items-center")}>
+        {collapsed ? (
+          <div className="w-9 h-9 rounded-xl bg-sidebar-accent/60 flex items-center justify-center">
+            <span className="text-sidebar-foreground font-extrabold text-sm">AT</span>
+          </div>
+        ) : (
+          <>
+            <h1 className="text-sidebar-foreground text-lg font-extrabold leading-tight" style={{ fontFamily: "'Poppins', sans-serif" }}>
+              AT SMART SALON
+            </h1>
+            <p className="text-sidebar-foreground/60 text-[10px] font-medium uppercase tracking-[0.12em] mt-0.5" style={{ fontFamily: "'Poppins', sans-serif" }}>
+              Salon Management Software
+            </p>
+          </>
+        )}
       </div>
 
-      <nav className="flex-1 px-4 space-y-1 overflow-y-auto mt-4">
+      {/* Nav */}
+      <nav className={clsx("flex-1 space-y-1 overflow-y-auto mt-2", collapsed ? "px-2" : "px-4")}>
         {visibleNavItems.map((item) => {
           const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
           const isLocked = lockConfig.modules.includes(item.href) && (currentUser?.moduleLockEnabled ?? false);
           return (
-            <Link 
-              key={item.href} 
+            <Link
+              key={item.href}
               href={item.href}
+              title={collapsed ? item.label : undefined}
               className={clsx(
-                "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 font-medium text-sm",
-                isActive 
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-md shadow-black/10" 
+                "flex items-center rounded-xl transition-all duration-200 font-medium text-sm",
+                collapsed ? "justify-center p-3" : "gap-3 px-4 py-3",
+                isActive
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-md shadow-black/10"
                   : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
               )}
             >
-              <item.icon className={clsx("w-5 h-5", isActive ? "text-secondary" : "")} />
-              <span className="flex-1">{item.label}</span>
-              {isLocked && <Lock className="w-3 h-3 text-sidebar-foreground/40" />}
+              <item.icon className={clsx("w-5 h-5 shrink-0", isActive ? "text-secondary" : "")} />
+              {!collapsed && (
+                <>
+                  <span className="flex-1">{item.label}</span>
+                  {isLocked && <Lock className="w-3 h-3 text-sidebar-foreground/40" />}
+                </>
+              )}
             </Link>
           );
         })}
@@ -87,38 +123,75 @@ export function Sidebar() {
         {isMasterAdmin && (
           <Link
             href="/settings"
+            title={collapsed ? "Settings" : undefined}
             className={clsx(
-              "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 font-medium text-sm",
+              "flex items-center rounded-xl transition-all duration-200 font-medium text-sm",
+              collapsed ? "justify-center p-3" : "gap-3 px-4 py-3",
               location === "/settings"
                 ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-md shadow-black/10"
                 : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
             )}
           >
-            <Settings className={clsx("w-5 h-5", location === "/settings" ? "text-secondary" : "")} />
-            <span className="flex-1">Settings</span>
+            <Settings className={clsx("w-5 h-5 shrink-0", location === "/settings" ? "text-secondary" : "")} />
+            {!collapsed && <span className="flex-1">Settings</span>}
           </Link>
         )}
       </nav>
 
-      <div className="p-4 mt-auto border-t border-sidebar-border/50">
-        <div className="mb-3 px-4 py-3 rounded-xl bg-sidebar-accent/30 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full rose-gold-gradient flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-            {initials}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1">
-              <p className="text-xs text-sidebar-foreground font-semibold truncate">{currentUser?.name ?? "User"}</p>
-              {isMasterAdmin && <ShieldCheck className="w-3 h-3 text-secondary flex-shrink-0" />}
+      {/* Bottom section */}
+      <div className={clsx("mt-auto border-t border-sidebar-border/50", collapsed ? "p-2 space-y-2" : "p-4 space-y-3")}>
+        {/* User card */}
+        {collapsed ? (
+          <div title={currentUser?.name ?? "User"} className="flex justify-center">
+            <div className="w-9 h-9 rounded-full rose-gold-gradient flex items-center justify-center text-white font-bold text-xs">
+              {initials}
             </div>
-            <p className="text-[10px] text-sidebar-foreground/50 truncate">{currentUser?.email}</p>
           </div>
-        </div>
+        ) : (
+          <div className="px-4 py-3 rounded-xl bg-sidebar-accent/30 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full rose-gold-gradient flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+              {initials}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1">
+                <p className="text-xs text-sidebar-foreground font-semibold truncate">{currentUser?.name ?? "User"}</p>
+                {isMasterAdmin && <ShieldCheck className="w-3 h-3 text-secondary flex-shrink-0" />}
+              </div>
+              <p className="text-[10px] text-sidebar-foreground/50 truncate">{currentUser?.email}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Logout */}
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sidebar-foreground/70 hover:bg-red-500/20 hover:text-red-400 transition-all duration-300 font-medium text-sm"
+          title={collapsed ? "Sign Out" : undefined}
+          className={clsx(
+            "w-full flex items-center rounded-xl text-sidebar-foreground/70 hover:bg-red-500/20 hover:text-red-400 transition-all duration-300 font-medium text-sm",
+            collapsed ? "justify-center p-3" : "gap-3 px-4 py-2.5"
+          )}
         >
-          <LogOut className="w-4 h-4" />
-          Sign Out
+          <LogOut className="w-4 h-4 shrink-0" />
+          {!collapsed && "Sign Out"}
+        </button>
+
+        {/* Collapse toggle */}
+        <button
+          onClick={toggleCollapsed}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className={clsx(
+            "w-full flex items-center rounded-xl text-sidebar-foreground/50 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground transition-all duration-200 font-medium text-sm",
+            collapsed ? "justify-center p-3" : "gap-3 px-4 py-2.5"
+          )}
+        >
+          {collapsed ? (
+            <ChevronRight className="w-4 h-4 shrink-0" />
+          ) : (
+            <>
+              <ChevronLeft className="w-4 h-4 shrink-0" />
+              <span>Collapse</span>
+            </>
+          )}
         </button>
       </div>
     </div>
