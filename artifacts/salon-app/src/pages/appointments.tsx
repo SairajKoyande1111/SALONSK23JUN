@@ -40,29 +40,30 @@ const legendDotColors: Record<string, string> = {
 };
 
 // ─── Calendar view constants ──────────────────────────────────────────────────
-const SLOT_HEIGHT = 84;       // px per 30-min slot
-const TIME_COL_W = 72;        // px for the time label column
+const SLOT_HEIGHT = 56;       // px per 30-min slot
+const TIME_COL_W = 88;        // px for the time label column
 const CAL_START = 9 * 60;     // 9:00 AM in minutes from midnight
 const CAL_END   = 21 * 60;    // 9:00 PM in minutes from midnight
 const TOTAL_SLOTS = (CAL_END - CAL_START) / 30; // 24 slots
 
+// Zenotti-style card colours — very light pastels, subtle borders
 const calBg: Record<string, string> = {
-  scheduled:   "bg-blue-50 border-blue-300",
-  "in-progress": "bg-amber-50 border-amber-300",
-  completed:   "bg-green-50 border-green-300",
-  cancelled:   "bg-slate-100 border-slate-300 opacity-60",
-};
-const calLeftBar: Record<string, string> = {
-  scheduled:   "bg-blue-400",
-  "in-progress": "bg-amber-400",
-  completed:   "bg-green-500",
-  cancelled:   "bg-slate-400",
+  scheduled:   "bg-[#EEF3FF] border-[#C0D0FF]",
+  "in-progress": "bg-[#FFFBEB] border-[#FDE68A]",
+  completed:   "bg-[#F0FDF4] border-[#86EFAC]",
+  cancelled:   "bg-[#F9FAFB] border-[#E5E7EB] opacity-70",
 };
 const calTextColor: Record<string, string> = {
-  scheduled:   "text-blue-900",
-  "in-progress": "text-amber-900",
-  completed:   "text-green-900",
-  cancelled:   "text-slate-600",
+  scheduled:   "text-[#1e3a8a]",
+  "in-progress": "text-[#92400e]",
+  completed:   "text-[#14532d]",
+  cancelled:   "text-[#6b7280]",
+};
+const calTimeColor: Record<string, string> = {
+  scheduled:   "text-[#3b5bdb]",
+  "in-progress": "text-[#d97706]",
+  completed:   "text-[#16a34a]",
+  cancelled:   "text-[#9ca3af]",
 };
 
 function timeToMinutes(time: string): number {
@@ -994,14 +995,129 @@ function DeleteConfirm({ appt, onClose, onConfirm }: {
   );
 }
 
-// ─── Calendar Appointment Block ───────────────────────────────────────────────
-function CalendarApptBlock({ appt, top, height, onEdit, onDelete, onStatusChange }: {
-  appt: any; top: number; height: number;
+// ─── Appointment Detail Modal ─────────────────────────────────────────────────
+function ApptDetailModal({ appt, onClose, onEdit, onDelete, onStatusChange }: {
+  appt: any; onClose: () => void;
   onEdit: (a: any) => void; onDelete: (a: any) => void;
   onStatusChange: (id: string, status: string) => void;
 }) {
+  const status = appt.status || "scheduled";
+  const id = appt.id || appt._id;
+  const endMin = timeToMinutes(appt.appointmentTime) + (appt.duration || 30);
+  const startTimeStr = appt.appointmentTime
+    ? format(new Date(2020, 0, 1, ...appt.appointmentTime.split(":").map(Number) as [number, number]), "h:mm a")
+    : "";
+  const endTimeStr = format(new Date(2020, 0, 1, Math.floor(endMin / 60), endMin % 60), "h:mm a");
+  const serviceName = appt.services?.length > 0
+    ? appt.services.map((s: any) => s.serviceName).join(", ")
+    : appt.serviceName || "";
+
+  const statusBadge: Record<string, string> = {
+    scheduled: "bg-blue-100 text-blue-700",
+    "in-progress": "bg-amber-100 text-amber-700",
+    completed: "bg-green-100 text-green-700",
+    cancelled: "bg-slate-100 text-slate-600",
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[80] flex items-center justify-center p-4"
+      onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+        onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className={`px-5 py-4 ${calBg[status] || calBg.scheduled}`}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <p className={`text-[11px] font-semibold mb-0.5 ${calTimeColor[status] || calTimeColor.scheduled}`}>
+                {startTimeStr} – {endTimeStr} · {appt.duration || 30} min
+              </p>
+              <p className={`text-base font-bold leading-tight ${calTextColor[status] || calTextColor.scheduled}`}>
+                {appt.customerName || "Walk-in"}
+              </p>
+            </div>
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-black/10 transition-colors shrink-0">
+              <X className="w-4 h-4 text-muted-foreground" />
+            </button>
+          </div>
+          <span className={`inline-block mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${statusBadge[status] || statusBadge.scheduled}`}>
+            {status.replace("-", " ")}
+          </span>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-3 text-sm">
+          {appt.customerPhone && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <span className="text-xs font-semibold w-20 shrink-0">Phone</span>
+              <span className="font-medium text-foreground">{appt.customerPhone}</span>
+            </div>
+          )}
+          {serviceName && (
+            <div className="flex items-start gap-2 text-muted-foreground">
+              <span className="text-xs font-semibold w-20 shrink-0 pt-0.5">Service</span>
+              <span className="font-medium text-foreground">{serviceName}</span>
+            </div>
+          )}
+          {appt.staffName && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <span className="text-xs font-semibold w-20 shrink-0">Stylist</span>
+              <span className="font-medium text-foreground">{appt.staffName}</span>
+            </div>
+          )}
+          {appt.appointmentDate && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <span className="text-xs font-semibold w-20 shrink-0">Date</span>
+              <span className="font-medium text-foreground">
+                {format(new Date(appt.appointmentDate), "dd MMM yyyy")}
+              </span>
+            </div>
+          )}
+          {appt.notes && (
+            <div className="pt-2 border-t border-border/50">
+              <p className="text-xs font-semibold text-muted-foreground mb-1">Notes</p>
+              <p className="text-xs text-muted-foreground italic leading-relaxed">{appt.notes}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Change status */}
+        <div className="px-5 pb-4">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Change Status</p>
+          <div className="flex gap-1.5 flex-wrap">
+            {STATUS_OPTIONS.filter(s => s !== status).map(s => (
+              <button key={s}
+                className="px-2.5 py-1 rounded-full text-xs font-semibold border border-border hover:bg-muted transition-colors capitalize"
+                onClick={() => { onStatusChange(id, s); onClose(); }}>
+                {s.replace("-", " ")}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer actions */}
+        <div className="px-5 pb-5 flex gap-2">
+          <button onClick={() => { onEdit(appt); onClose(); }}
+            className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors flex items-center justify-center gap-1.5">
+            <Pencil className="w-3.5 h-3.5" /> Edit
+          </button>
+          <button onClick={() => { onDelete(appt); onClose(); }}
+            className="flex-1 py-2.5 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-100 transition-colors flex items-center justify-center gap-1.5">
+            <Trash2 className="w-3.5 h-3.5" /> Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Calendar Appointment Block ───────────────────────────────────────────────
+function CalendarApptBlock({ appt, top, height, onEdit, onDelete, onStatusChange, onView }: {
+  appt: any; top: number; height: number;
+  onEdit: (a: any) => void; onDelete: (a: any) => void;
+  onStatusChange: (id: string, status: string) => void;
+  onView: (a: any) => void;
+}) {
   const [showMenu, setShowMenu] = useState(false);
-  const [showTooltip, setShowTooltip] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1014,58 +1130,62 @@ function CalendarApptBlock({ appt, top, height, onEdit, onDelete, onStatusChange
 
   const status = appt.status || "scheduled";
   const id = appt.id || appt._id;
-
-  const endTimeStr = () => {
-    const min = timeToMinutes(appt.appointmentTime) + (appt.duration || 30);
-    return format(new Date(2020, 0, 1, Math.floor(min / 60), min % 60), "h:mm a");
-  };
+  const endMin = timeToMinutes(appt.appointmentTime) + (appt.duration || 30);
   const startTimeStr = appt.appointmentTime
     ? format(new Date(2020, 0, 1, ...appt.appointmentTime.split(":").map(Number) as [number, number]), "h:mm a")
     : "";
-
+  const endTimeStr = format(new Date(2020, 0, 1, Math.floor(endMin / 60), endMin % 60), "h:mm a");
   const serviceName = appt.services?.length > 0
     ? appt.services.map((s: any) => s.serviceName).join(", ")
     : appt.serviceName || "";
 
+  const cardH = Math.max(height - 4, 32);
+
   return (
     <div ref={ref}
-      className={`absolute left-1 right-1 rounded-xl border-2 overflow-visible cursor-pointer shadow-sm hover:shadow-lg transition-all z-[5] ${calBg[status] || calBg.scheduled}`}
-      style={{ top: top + 2, height: Math.max(height - 4, 36) }}
-      onMouseEnter={() => !showMenu && setShowTooltip(true)}
-      onMouseLeave={() => setShowTooltip(false)}
+      className={`absolute left-1 right-1 rounded-lg border overflow-hidden cursor-pointer shadow-sm hover:shadow-md hover:brightness-[0.97] transition-all z-[5] ${calBg[status] || calBg.scheduled}`}
+      style={{ top: top + 2, height: cardH }}
+      onClick={() => { if (!showMenu) onView(appt); }}
     >
-      {/* Left accent bar */}
-      <div className={`absolute left-0 top-0 bottom-0 w-[4px] rounded-l-xl ${calLeftBar[status] || calLeftBar.scheduled}`} />
-
       {/* Content */}
-      <div className={`h-full pl-3 pr-7 py-1.5 flex flex-col justify-start overflow-hidden gap-0.5 ${calTextColor[status] || calTextColor.scheduled}`}>
-        <p className="text-[11px] font-semibold opacity-70 leading-tight truncate">
-          {startTimeStr}–{endTimeStr()}
-        </p>
-        <p className="text-[13px] font-bold leading-tight truncate">
+      <div className={`h-full px-2 pt-1.5 pb-1 flex flex-col overflow-hidden ${calTextColor[status] || calTextColor.scheduled}`}>
+        {/* Time line */}
+        <div className="flex items-center justify-between gap-1 mb-0.5">
+          <p className={`text-[10px] font-semibold leading-tight truncate ${calTimeColor[status] || calTimeColor.scheduled}`}>
+            {startTimeStr}–{endTimeStr}
+          </p>
+          {/* 3-dot menu */}
+          <button
+            className="shrink-0 w-4 h-4 flex items-center justify-center rounded hover:bg-black/10 transition-colors z-10"
+            onClick={e => { e.stopPropagation(); setShowMenu(m => !m); }}
+          >
+            <MoreHorizontal className="w-3 h-3 opacity-60" />
+          </button>
+        </div>
+
+        {/* Customer name */}
+        <p className="text-[12px] font-bold leading-tight truncate">
           {appt.customerName || "Walk-in"}
         </p>
-        {height >= 54 && serviceName && (
-          <p className="text-[11px] truncate opacity-80 leading-tight font-medium">{serviceName}</p>
+
+        {/* Service */}
+        {cardH >= 58 && serviceName && (
+          <p className="text-[10px] leading-tight truncate opacity-75 mt-0.5">{serviceName}</p>
         )}
-        {height >= 74 && appt.customerPhone && (
-          <p className="text-[10px] truncate opacity-60 leading-tight">{appt.customerPhone}</p>
+
+        {/* Phone */}
+        {cardH >= 76 && appt.customerPhone && (
+          <p className="text-[10px] leading-tight truncate opacity-55 mt-0.5">{appt.customerPhone}</p>
         )}
       </div>
 
-      {/* 3-dot menu button */}
-      <button
-        className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center rounded-md bg-black/10 hover:bg-black/20 transition-colors z-10"
-        onClick={e => { e.stopPropagation(); setShowMenu(m => !m); setShowTooltip(false); }}
-      >
-        <MoreHorizontal className="w-3 h-3" />
-      </button>
-
-      {/* Context menu */}
+      {/* Context menu — renders on LEFT to avoid right-edge clipping */}
       {showMenu && (
-        <div className="absolute right-0 top-6 bg-white dark:bg-card rounded-xl shadow-2xl border border-border z-[60] overflow-hidden min-w-[160px]"
+        <div
+          className="absolute top-0 right-full mr-1 bg-white rounded-xl shadow-2xl border border-border z-[100] overflow-hidden min-w-[168px]"
+          style={{ top: 0 }}
           onClick={e => e.stopPropagation()}>
-          <div className="px-3 py-2.5 border-b border-border/50 bg-muted/30">
+          <div className="px-3 py-2.5 border-b border-border/50 bg-gray-50">
             <p className="text-xs font-bold truncate">{appt.customerName || "Walk-in"}</p>
             <p className="text-[10px] text-muted-foreground truncate">{serviceName}</p>
           </div>
@@ -1080,6 +1200,10 @@ function CalendarApptBlock({ appt, top, height, onEdit, onDelete, onStatusChange
             ))}
             <div className="border-t border-border/50 my-1" />
             <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center gap-2"
+              onClick={() => { onView(appt); setShowMenu(false); }}>
+              <Clock className="w-3 h-3" /> View Details
+            </button>
+            <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center gap-2"
               onClick={() => { onEdit(appt); setShowMenu(false); }}>
               <Pencil className="w-3 h-3" /> Edit
             </button>
@@ -1090,31 +1214,17 @@ function CalendarApptBlock({ appt, top, height, onEdit, onDelete, onStatusChange
           </div>
         </div>
       )}
-
-      {/* Hover tooltip */}
-      {showTooltip && !showMenu && (
-        <div className="absolute left-full ml-2 top-0 bg-white dark:bg-card rounded-xl shadow-2xl border border-border z-[60] p-3 w-52 pointer-events-none"
-          style={{ maxWidth: "220px" }}>
-          <p className="text-xs font-bold text-foreground">{appt.customerName || "Walk-in"}</p>
-          {appt.customerPhone && <p className="text-[11px] text-muted-foreground mt-0.5">{appt.customerPhone}</p>}
-          <p className="text-[11px] text-muted-foreground mt-1">{startTimeStr} – {endTimeStr()} · {appt.duration || 30} min</p>
-          {serviceName && <p className="text-[11px] font-medium text-primary mt-1">{serviceName}</p>}
-          {appt.staffName && <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1"><User className="w-2.5 h-2.5" />{appt.staffName}</p>}
-          {appt.notes && (
-            <p className="text-[11px] italic text-muted-foreground mt-2 border-t border-border/50 pt-2">{appt.notes}</p>
-          )}
-        </div>
-      )}
     </div>
   );
 }
 
 // ─── Calendar Grid ────────────────────────────────────────────────────────────
-function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, onDelete, onStatusChange, loading }: {
+function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, onDelete, onStatusChange, onView, loading }: {
   appointments: any[]; staff: any[]; selectedDate: Date;
   onSlotClick: (staffId: string, minutes: number) => void;
   onEdit: (a: any) => void; onDelete: (a: any) => void;
   onStatusChange: (id: string, status: string) => void;
+  onView: (a: any) => void;
   loading: boolean;
 }) {
   const [nowMin, setNowMin] = useState(() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); });
@@ -1186,19 +1296,18 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
 
       {/* Scrollable grid */}
       <div className="flex overflow-auto flex-1">
-        {/* Time labels column */}
-        <div style={{ width: TIME_COL_W, minWidth: TIME_COL_W }} className="shrink-0 border-r border-border/30 bg-muted/10">
+        {/* Time labels column — shows every 30-min slot */}
+        <div style={{ width: TIME_COL_W, minWidth: TIME_COL_W }} className="shrink-0 border-r border-border/40 bg-gray-50/60">
           {slots.map(min => {
             const h = Math.floor(min / 60);
             const m = min % 60;
+            const isHour = m === 0;
             return (
               <div key={min} style={{ height: SLOT_HEIGHT }}
-                className={`border-b flex items-start justify-end pr-2.5 pt-1.5 ${m === 0 ? "border-border/50" : "border-border/15"}`}>
-                {m === 0 && (
-                  <span className="text-[11px] font-semibold text-muted-foreground whitespace-nowrap">
-                    {format(new Date(2020, 0, 1, h, 0), "h:mm a")}
-                  </span>
-                )}
+                className={`border-b flex items-start justify-end pr-3 pt-1.5 ${isHour ? "border-border/50" : "border-border/20"}`}>
+                <span className={`whitespace-nowrap leading-tight ${isHour ? "text-[12px] font-semibold text-slate-600" : "text-[10px] font-medium text-slate-400"}`}>
+                  {format(new Date(2020, 0, 1, h, m), isHour ? "h:mm a" : "h:mm")}
+                </span>
               </div>
             );
           })}
@@ -1258,7 +1367,7 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
                     <CalendarApptBlock
                       key={appt.id || appt._id}
                       appt={appt} top={top} height={height}
-                      onEdit={onEdit} onDelete={onDelete} onStatusChange={onStatusChange}
+                      onEdit={onEdit} onDelete={onDelete} onStatusChange={onStatusChange} onView={onView}
                     />
                   );
                 })}
@@ -1286,6 +1395,7 @@ export default function Appointments() {
   const [defaultBookingTime, setDefaultBookingTime] = useState("");
   const [editingAppt, setEditingAppt] = useState<any>(null);
   const [deletingAppt, setDeletingAppt] = useState<any>(null);
+  const [viewingAppt, setViewingAppt] = useState<any>(null);
   const [apptPage, setApptPage] = useState(1);
 
   const [dayAppointments, setDayAppointments] = useState<any[]>([]);
@@ -1501,6 +1611,7 @@ export default function Appointments() {
               onEdit={setEditingAppt}
               onDelete={setDeletingAppt}
               onStatusChange={handleStatusChange}
+              onView={setViewingAppt}
               loading={dayLoading}
             />
             {/* ── Bottom Stats Bar (Zenotti-style) ── */}
@@ -1610,6 +1721,17 @@ export default function Appointments() {
           )}
         </div>
       </div>
+
+      {/* ── Appointment Detail Modal ── */}
+      {viewingAppt && (
+        <ApptDetailModal
+          appt={viewingAppt}
+          onClose={() => setViewingAppt(null)}
+          onEdit={a => { setViewingAppt(null); setEditingAppt(a); }}
+          onDelete={a => { setViewingAppt(null); setDeletingAppt(a); }}
+          onStatusChange={(id, status) => { handleStatusChange(id, status); setViewingAppt(null); }}
+        />
+      )}
 
       {/* ── Modals ── */}
       {showBookingModal && (
