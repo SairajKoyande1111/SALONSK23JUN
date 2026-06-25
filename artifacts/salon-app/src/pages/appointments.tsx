@@ -1210,7 +1210,7 @@ function CalendarApptBlock({ appt, top, height, onEdit, onDelete, onStatusChange
       <div className={`h-full px-2 pt-1.5 pb-1 flex flex-col overflow-hidden rounded-lg ${calTextColor[status] || calTextColor.scheduled}`}>
         {/* Time + 3-dot button row */}
         <div className="flex items-center justify-between gap-1 mb-0.5">
-          <p className={`text-[10px] font-semibold leading-tight truncate ${calTimeColor[status] || calTimeColor.scheduled}`}>
+          <p className={`text-[12px] font-semibold leading-tight truncate ${calTimeColor[status] || calTimeColor.scheduled}`}>
             {startTimeStr}–{endTimeStr}
           </p>
           <button
@@ -1222,18 +1222,18 @@ function CalendarApptBlock({ appt, top, height, onEdit, onDelete, onStatusChange
         </div>
 
         {/* Customer name */}
-        <p className="text-[12px] font-bold leading-tight truncate">
+        <p className="text-[14px] font-bold leading-tight truncate">
           {appt.customerName || "Walk-in"}
         </p>
 
-        {/* Service — always show when height allows (>=44px) */}
+        {/* Service */}
         {showService && (
-          <p className="text-[10px] leading-tight truncate opacity-75 mt-0.5">{serviceName}</p>
+          <p className="text-[12px] leading-tight truncate opacity-75 mt-0.5">{serviceName}</p>
         )}
 
         {/* Phone */}
         {showPhone && (
-          <p className="text-[10px] leading-tight truncate opacity-55 mt-0.5">{appt.customerPhone}</p>
+          <p className="text-[11px] leading-tight truncate opacity-55 mt-0.5">{appt.customerPhone}</p>
         )}
       </div>
 
@@ -1342,10 +1342,12 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
             const isHour = m === 0;
             return (
               <div key={min} style={{ height: SLOT_HEIGHT }}
-                className={`border-b flex items-start justify-end pr-3 pt-1.5 ${isHour ? "border-border/50" : "border-border/20"}`}>
-                <span className={`whitespace-nowrap leading-tight ${isHour ? "text-[12px] font-semibold text-slate-600" : "text-[10px] font-medium text-slate-400"}`}>
-                  {format(new Date(2020, 0, 1, h, m), isHour ? "h:mm a" : "h:mm")}
-                </span>
+                className={`flex items-start justify-end pr-3 pt-1.5 ${isHour ? "border-b border-border/50" : "border-b border-transparent"}`}>
+                {isHour && (
+                  <span className="whitespace-nowrap leading-tight text-[13px] font-semibold text-slate-600">
+                    {format(new Date(2020, 0, 1, h, m), "h:mm a")}
+                  </span>
+                )}
               </div>
             );
           })}
@@ -1376,8 +1378,8 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
                   const isHighlighted = highlightedSlot?.staffId === staffId && highlightedSlot?.min === min;
                   return (
                     <div key={min} style={{ height: SLOT_HEIGHT }}
-                      className={`border-b cursor-pointer transition-colors group relative
-                        ${min % 60 === 0 ? "border-border/40" : "border-border/15"}
+                      className={`cursor-pointer transition-colors group relative
+                        ${min % 60 === 0 ? "border-b border-border/40" : "border-b border-transparent"}
                         ${isHighlighted ? "bg-primary/15 ring-1 ring-inset ring-primary/40" : "hover:bg-primary/5"}`}
                       onClick={() => handleSlotClick(staffId, min)}
                     >
