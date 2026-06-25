@@ -1399,8 +1399,12 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
                 {staffAppts.map(appt => {
                   const apptMin = timeToMinutes(appt.appointmentTime);
                   if (apptMin < CAL_START || apptMin >= CAL_END) return null;
-                  const top = ((apptMin - CAL_START) / 30) * SLOT_HEIGHT;
-                  const height = Math.max(((appt.duration || 30) / 30) * SLOT_HEIGHT, 36);
+                  // Snap to hour boundaries (like Zenotti): card fills the full hour(s) it spans
+                  const slotStart = Math.floor(apptMin / 60) * 60;
+                  const apptEnd = apptMin + (appt.duration || 30);
+                  const slotEnd = Math.ceil(apptEnd / 60) * 60;
+                  const top = ((slotStart - CAL_START) / 30) * SLOT_HEIGHT;
+                  const height = Math.max(((slotEnd - slotStart) / 30) * SLOT_HEIGHT, SLOT_HEIGHT * 2);
                   return (
                     <CalendarApptBlock
                       key={appt.id || appt._id}
