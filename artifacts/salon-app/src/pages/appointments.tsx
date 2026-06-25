@@ -40,7 +40,7 @@ const legendDotColors: Record<string, string> = {
 };
 
 // ─── Calendar view constants ──────────────────────────────────────────────────
-const SLOT_HEIGHT = 60;       // px per 30-min slot
+const SLOT_HEIGHT = 84;       // px per 30-min slot
 const TIME_COL_W = 72;        // px for the time label column
 const CAL_START = 9 * 60;     // 9:00 AM in minutes from midnight
 const CAL_END   = 21 * 60;    // 9:00 PM in minutes from midnight
@@ -1029,34 +1029,33 @@ function CalendarApptBlock({ appt, top, height, onEdit, onDelete, onStatusChange
 
   return (
     <div ref={ref}
-      className={`absolute left-1 right-1 rounded-lg border overflow-visible cursor-pointer shadow-sm hover:shadow-md transition-shadow z-[5] ${calBg[status] || calBg.scheduled}`}
-      style={{ top: top + 2, height: Math.max(height - 4, 22) }}
+      className={`absolute left-1 right-1 rounded-xl border-2 overflow-visible cursor-pointer shadow-sm hover:shadow-lg transition-all z-[5] ${calBg[status] || calBg.scheduled}`}
+      style={{ top: top + 2, height: Math.max(height - 4, 36) }}
       onMouseEnter={() => !showMenu && setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
     >
       {/* Left accent bar */}
-      <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-lg ${calLeftBar[status] || calLeftBar.scheduled}`} />
+      <div className={`absolute left-0 top-0 bottom-0 w-[4px] rounded-l-xl ${calLeftBar[status] || calLeftBar.scheduled}`} />
 
       {/* Content */}
-      <div className={`h-full pl-2.5 pr-6 py-1 flex flex-col overflow-hidden ${calTextColor[status] || calTextColor.scheduled}`}>
-        {height >= 28 && (
-          <p className="text-[10px] font-semibold opacity-75 leading-tight truncate">
-            {startTimeStr}–{endTimeStr()}
-          </p>
+      <div className={`h-full pl-3 pr-7 py-1.5 flex flex-col justify-start overflow-hidden gap-0.5 ${calTextColor[status] || calTextColor.scheduled}`}>
+        <p className="text-[11px] font-semibold opacity-70 leading-tight truncate">
+          {startTimeStr}–{endTimeStr()}
+        </p>
+        <p className="text-[13px] font-bold leading-tight truncate">
+          {appt.customerName || "Walk-in"}
+        </p>
+        {height >= 54 && serviceName && (
+          <p className="text-[11px] truncate opacity-80 leading-tight font-medium">{serviceName}</p>
         )}
-        {height >= 18 && (
-          <p className="text-xs font-bold leading-tight truncate">
-            {appt.customerName || "Walk-in"}
-          </p>
-        )}
-        {height >= 44 && (
-          <p className="text-[10px] truncate opacity-80 leading-tight">{serviceName}</p>
+        {height >= 74 && appt.customerPhone && (
+          <p className="text-[10px] truncate opacity-60 leading-tight">{appt.customerPhone}</p>
         )}
       </div>
 
       {/* 3-dot menu button */}
       <button
-        className="absolute top-0.5 right-0.5 w-5 h-5 flex items-center justify-center rounded bg-black/10 hover:bg-black/20 transition-colors z-10"
+        className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center rounded-md bg-black/10 hover:bg-black/20 transition-colors z-10"
         onClick={e => { e.stopPropagation(); setShowMenu(m => !m); setShowTooltip(false); }}
       >
         <MoreHorizontal className="w-3 h-3" />
@@ -1119,6 +1118,8 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
   loading: boolean;
 }) {
   const [nowMin, setNowMin] = useState(() => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); });
+  const [highlightedSlot, setHighlightedSlot] = useState<{ staffId: string; min: number } | null>(null);
+
   useEffect(() => {
     const t = setInterval(() => { const n = new Date(); setNowMin(n.getHours() * 60 + n.getMinutes()); }, 30000);
     return () => clearInterval(t);
@@ -1129,6 +1130,11 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
   const nowTop = ((nowMin - CAL_START) / 30) * SLOT_HEIGHT;
 
   const slots = useMemo(() => Array.from({ length: TOTAL_SLOTS }, (_, i) => CAL_START + i * 30), []);
+
+  const handleSlotClick = (staffId: string, min: number) => {
+    setHighlightedSlot({ staffId, min });
+    onSlotClick(staffId, min);
+  };
 
   if (loading) {
     return (
@@ -1156,7 +1162,7 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
   return (
     <div className="flex flex-col overflow-hidden rounded-2xl border border-border/50 bg-card flex-1">
       {/* Staff header row */}
-      <div className="flex border-b border-border/50 bg-muted/20 shrink-0">
+      <div className="flex border-b-2 border-border/50 bg-muted/30 shrink-0">
         <div style={{ width: TIME_COL_W, minWidth: TIME_COL_W }} className="shrink-0 border-r border-border/30 flex items-center justify-center">
           <CalendarIcon className="w-4 h-4 text-muted-foreground" />
         </div>
@@ -1168,12 +1174,11 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
           }).length;
           return (
             <div key={id}
-              className="flex-1 min-w-[120px] py-2.5 px-2 border-r border-border/30 flex flex-col items-center gap-1">
-              <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
-                {s.name.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2)}
-              </div>
-              <p className="text-xs font-semibold text-center leading-tight">{s.name}</p>
-              <span className="text-[10px] text-muted-foreground">{count > 0 ? `${count} appt${count !== 1 ? "s" : ""}` : "Free"}</span>
+              className="flex-1 min-w-[140px] py-3 px-3 border-r border-border/30 flex flex-col items-start gap-0.5">
+              <p className="text-sm font-bold text-foreground leading-tight">{s.name}</p>
+              <span className="text-[11px] text-muted-foreground font-medium">
+                {count > 0 ? `${count} appointment${count !== 1 ? "s" : ""}` : "No appointments"}
+              </span>
             </div>
           );
         })}
@@ -1182,15 +1187,15 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
       {/* Scrollable grid */}
       <div className="flex overflow-auto flex-1">
         {/* Time labels column */}
-        <div style={{ width: TIME_COL_W, minWidth: TIME_COL_W }} className="shrink-0 border-r border-border/30">
+        <div style={{ width: TIME_COL_W, minWidth: TIME_COL_W }} className="shrink-0 border-r border-border/30 bg-muted/10">
           {slots.map(min => {
             const h = Math.floor(min / 60);
             const m = min % 60;
             return (
               <div key={min} style={{ height: SLOT_HEIGHT }}
-                className={`border-b flex items-start justify-end pr-2.5 pt-1.5 ${m === 0 ? "border-border/40" : "border-border/10"}`}>
+                className={`border-b flex items-start justify-end pr-2.5 pt-1.5 ${m === 0 ? "border-border/50" : "border-border/15"}`}>
                 {m === 0 && (
-                  <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">
+                  <span className="text-[11px] font-semibold text-muted-foreground whitespace-nowrap">
                     {format(new Date(2020, 0, 1, h, 0), "h:mm a")}
                   </span>
                 )}
@@ -1218,25 +1223,37 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
             });
 
             return (
-              <div key={staffId} className="flex-1 min-w-[120px] border-r border-border/20 relative overflow-visible">
+              <div key={staffId} className="flex-1 min-w-[140px] border-r border-border/20 relative overflow-visible">
                 {/* Slot background cells */}
-                {slots.map(min => (
-                  <div key={min} style={{ height: SLOT_HEIGHT }}
-                    className={`border-b cursor-pointer transition-colors group ${min % 60 === 0 ? "border-border/30" : "border-border/10"} hover:bg-primary/5`}
-                    onClick={() => onSlotClick(staffId, min)}
-                  >
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity h-full flex items-center justify-center">
-                      <Plus className="w-3.5 h-3.5 text-primary/40" />
+                {slots.map(min => {
+                  const isHighlighted = highlightedSlot?.staffId === staffId && highlightedSlot?.min === min;
+                  return (
+                    <div key={min} style={{ height: SLOT_HEIGHT }}
+                      className={`border-b cursor-pointer transition-colors group relative
+                        ${min % 60 === 0 ? "border-border/40" : "border-border/15"}
+                        ${isHighlighted ? "bg-primary/15 ring-1 ring-inset ring-primary/40" : "hover:bg-primary/5"}`}
+                      onClick={() => handleSlotClick(staffId, min)}
+                    >
+                      {isHighlighted && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <Plus className="w-4 h-4 text-primary/50" />
+                        </div>
+                      )}
+                      {!isHighlighted && (
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity h-full flex items-center justify-center">
+                          <Plus className="w-3.5 h-3.5 text-primary/30" />
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {/* Appointment blocks */}
                 {staffAppts.map(appt => {
                   const apptMin = timeToMinutes(appt.appointmentTime);
                   if (apptMin < CAL_START || apptMin >= CAL_END) return null;
                   const top = ((apptMin - CAL_START) / 30) * SLOT_HEIGHT;
-                  const height = Math.max(((appt.duration || 30) / 30) * SLOT_HEIGHT, 24);
+                  const height = Math.max(((appt.duration || 30) / 30) * SLOT_HEIGHT, 36);
                   return (
                     <CalendarApptBlock
                       key={appt.id || appt._id}
@@ -1472,9 +1489,10 @@ export default function Appointments() {
         )}
 
         {/* Calendar / List view */}
-        <div className="flex-1 overflow-hidden p-4 flex flex-col">
+        <div className="flex-1 overflow-hidden p-4 flex flex-col gap-3">
 
           {view === "calendar" ? (
+            <>
             <CalendarGrid
               appointments={dayAppointments}
               staff={staff}
@@ -1485,6 +1503,36 @@ export default function Appointments() {
               onStatusChange={handleStatusChange}
               loading={dayLoading}
             />
+            {/* ── Bottom Stats Bar (Zenotti-style) ── */}
+            {!dayLoading && (
+              <div className="shrink-0 bg-card border border-border/50 rounded-xl px-5 py-2.5 flex items-center gap-6 flex-wrap text-xs">
+                {(() => {
+                  const totalGuests = new Set(dayAppointments.filter(a => a.customerId).map(a => a.customerId)).size;
+                  const totalAppts = dayAppointments.length;
+                  const openAppts = dayAppointments.filter(a => a.status === "scheduled" || a.status === "in-progress").length;
+                  const completedAppts = dayAppointments.filter(a => a.status === "completed").length;
+                  const cancelledAppts = dayAppointments.filter(a => a.status === "cancelled").length;
+                  const bookedPct = totalAppts > 0 ? Math.round((completedAppts / totalAppts) * 100) : 0;
+                  const items = [
+                    { label: "Total guests", value: totalGuests },
+                    { label: "Total appts", value: totalAppts },
+                    { label: "Open appts", value: openAppts },
+                    { label: "Completed", value: completedAppts },
+                    { label: "Cancelled", value: cancelledAppts },
+                    { label: "Booked", value: `${bookedPct}%` },
+                    { label: "Staff on duty", value: staff.length },
+                  ];
+                  return items.map((item, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <span className="text-muted-foreground font-medium">{item.label}:</span>
+                      <span className="font-bold text-foreground">{item.value}</span>
+                      {i < items.length - 1 && <span className="ml-3 text-border">|</span>}
+                    </div>
+                  ));
+                })()}
+              </div>
+            )}
+            </>
           ) : (
             /* ── List view ── */
             <div className="flex-1 overflow-y-auto space-y-3">
