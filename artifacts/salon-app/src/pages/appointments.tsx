@@ -1186,9 +1186,135 @@ function ContextMenuPortal({ appt, serviceName, status, id, onView, onEdit, onDe
   );
 }
 
+// ─── Overlap layout helper ─────────────────────────────────────────────────────
+// Uses the SAME hour-snapped geometry as CalendarApptBlock rendering so that
+// visually identical blocks are always treated as overlapping.
+function snappedTimes(appt: any): { startMin: number; endMin: number } {
+  const apptMin = timeToMinutes(appt.appointmentTime);
+  const apptEnd = apptMin + (appt.duration || 30);
+  return {
+    startMin: Math.floor(apptMin / 60) * 60,
+    endMin:   Math.ceil(apptEnd  / 60) * 60,
+  };
+}
+
+function layoutOverlappingAppts(appts: any[]): Map<string, { left: string; width: string }> {
+  if (appts.length === 0) return new Map();
+
+  const sorted = [...appts].sort(
+    (a, b) => timeToMinutes(a.appointmentTime) - timeToMinutes(b.appointmentTime)
+  );
+
+  // Greedy column assignment using snapped (rendered) times — not raw minutes
+  const colEndTimes: number[] = [];
+  const apptInfo: { id: string; col: number; startMin: number; endMin: number }[] = [];
+
+  for (const appt of sorted) {
+    const { startMin, endMin } = snappedTimes(appt);
+    let col = colEndTimes.findIndex(end => end <= startMin);
+    if (col === -1) { col = colEndTimes.length; colEndTimes.push(endMin); }
+    else colEndTimes[col] = endMin;
+    apptInfo.push({ id: appt.id || appt._id, col, startMin, endMin });
+  }
+
+  // For each appt, totalCols = max col index among all visually-overlapping appts + 1
+  const result = new Map<string, { left: string; width: string }>();
+  for (const item of apptInfo) {
+    const overlapping = apptInfo.filter(
+      o => o.startMin < item.endMin && o.endMin > item.startMin
+    );
+    const totalCols = Math.max(...overlapping.map(o => o.col)) + 1;
+    const pct = 100 / totalCols;
+    result.set(item.id, {
+      left:  `calc(${item.col * pct}% + 2px)`,
+      width: `calc(${pct}% - 4px)`,
+    });
+  }
+  return result;
+}
+
+// ─── Reminder Detail Modal ─────────────────────────────────────────────────────
+function ReminderDetailModal({ reminder, onClose, onBookNow }: {
+  reminder: any; onClose: () => void; onBookNow?: () => void;
+}) {
+  const lastVisit = reminder.lastVisitDate
+    ? format(new Date(reminder.lastVisitDate + "T00:00:00"), "dd MMM yyyy")
+    : "";
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[90] flex items-center justify-center p-4 animate-in fade-in"
+      onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+        onClick={e => e.stopPropagation()}>
+        {/* Amber header */}
+        <div className="bg-amber-50 border-b border-amber-100 px-5 py-4 flex items-start gap-3">
+          <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
+            <Bell className="w-5 h-5 text-amber-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-semibold text-amber-600 uppercase tracking-wider mb-0.5">Follow-up Reminder</p>
+            <p className="text-lg font-bold text-amber-900 leading-tight truncate">{reminder.customerName}</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-amber-100 transition-colors">
+            <X className="w-4 h-4 text-amber-600" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-3 text-sm">
+          {reminder.customerPhone && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-muted-foreground w-24 shrink-0">Phone</span>
+              <span className="font-medium text-foreground">{reminder.customerPhone}</span>
+            </div>
+          )}
+          {lastVisit && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-muted-foreground w-24 shrink-0">Last Visit</span>
+              <span className="font-medium text-foreground">{lastVisit}</span>
+            </div>
+          )}
+          {reminder.services?.length > 0 && (
+            <div className="flex items-start gap-2">
+              <span className="text-xs font-semibold text-muted-foreground w-24 shrink-0 pt-0.5">Services</span>
+              <div className="flex flex-wrap gap-1.5">
+                {reminder.services.map((svc: string, i: number) => (
+                  <span key={i} className="bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-semibold">
+                    {svc}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="pt-2 border-t border-border/40 bg-amber-50/50 rounded-xl px-3 py-2.5">
+            <p className="text-xs text-amber-700 leading-relaxed">
+              💡 This customer visited on this date last month. Consider calling them to schedule a follow-up appointment.
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 pb-5 flex gap-2">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors">
+            Close
+          </button>
+          {onBookNow && (
+            <button onClick={onBookNow}
+              className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-colors flex items-center justify-center gap-1.5">
+              <Plus className="w-4 h-4" /> Book Now
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Calendar Appointment Block ───────────────────────────────────────────────
-function CalendarApptBlock({ appt, top, height, onEdit, onDelete, onStatusChange, onView }: {
+function CalendarApptBlock({ appt, top, height, colLeft, colWidth, onEdit, onDelete, onStatusChange, onView }: {
   appt: any; top: number; height: number;
+  colLeft?: string; colWidth?: string;
   onEdit: (a: any) => void; onDelete: (a: any) => void;
   onStatusChange: (id: string, status: string) => void;
   onView: (a: any) => void;
@@ -1213,8 +1339,8 @@ function CalendarApptBlock({ appt, top, height, onEdit, onDelete, onStatusChange
 
   return (
     <div ref={ref}
-      className={`absolute left-1 right-1 rounded-lg border cursor-pointer shadow-sm hover:shadow-md hover:brightness-[0.97] transition-all z-[5] ${calBg[status] || calBg.scheduled}`}
-      style={{ top: top + 2, height: cardH }}
+      className={`absolute rounded-lg border cursor-pointer shadow-sm hover:shadow-md hover:brightness-[0.97] transition-all z-[5] ${calBg[status] || calBg.scheduled}`}
+      style={{ top: top + 2, height: cardH, left: colLeft ?? "4px", width: colWidth ?? "calc(100% - 8px)" }}
       onClick={() => { if (!showMenu) onView(appt); }}
     >
       {/* Content — overflow-hidden only on inner div so menu can escape */}
@@ -1408,24 +1534,31 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
                   );
                 })}
 
-                {/* Appointment blocks */}
-                {staffAppts.map(appt => {
-                  const apptMin = timeToMinutes(appt.appointmentTime);
-                  if (apptMin < CAL_START || apptMin >= CAL_END) return null;
-                  // Snap to hour boundaries (like Zenotti): card fills the full hour(s) it spans
-                  const slotStart = Math.floor(apptMin / 60) * 60;
-                  const apptEnd = apptMin + (appt.duration || 30);
-                  const slotEnd = Math.ceil(apptEnd / 60) * 60;
-                  const top = ((slotStart - CAL_START) / 30) * SLOT_HEIGHT;
-                  const height = Math.max(((slotEnd - slotStart) / 30) * SLOT_HEIGHT, SLOT_HEIGHT * 2);
-                  return (
-                    <CalendarApptBlock
-                      key={appt.id || appt._id}
-                      appt={appt} top={top} height={height}
-                      onEdit={onEdit} onDelete={onDelete} onStatusChange={onStatusChange} onView={onView}
-                    />
-                  );
-                })}
+                {/* Appointment blocks — with overlap-aware layout */}
+                {(() => {
+                  const visibleAppts = staffAppts.filter(a => {
+                    const m = timeToMinutes(a.appointmentTime);
+                    return m >= CAL_START && m < CAL_END;
+                  });
+                  const overlapLayout = layoutOverlappingAppts(visibleAppts);
+                  return visibleAppts.map(appt => {
+                    const apptMin = timeToMinutes(appt.appointmentTime);
+                    const slotStart = Math.floor(apptMin / 60) * 60;
+                    const apptEnd   = apptMin + (appt.duration || 30);
+                    const slotEnd   = Math.ceil(apptEnd / 60) * 60;
+                    const top    = ((slotStart - CAL_START) / 30) * SLOT_HEIGHT;
+                    const height = Math.max(((slotEnd - slotStart) / 30) * SLOT_HEIGHT, SLOT_HEIGHT * 2);
+                    const pos = overlapLayout.get(appt.id || appt._id);
+                    return (
+                      <CalendarApptBlock
+                        key={appt.id || appt._id}
+                        appt={appt} top={top} height={height}
+                        colLeft={pos?.left} colWidth={pos?.width}
+                        onEdit={onEdit} onDelete={onDelete} onStatusChange={onStatusChange} onView={onView}
+                      />
+                    );
+                  });
+                })()}
               </div>
             );
           })}
@@ -1436,12 +1569,13 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
 }
 
 // ─── Month View ───────────────────────────────────────────────────────────────
-function MonthView({ calendarMonth, monthAppts, onDateClick, onViewAppt, remindersByDate }: {
+function MonthView({ calendarMonth, monthAppts, onDateClick, onViewAppt, remindersByDate, onViewReminder }: {
   calendarMonth: Date;
   monthAppts: any[];
   onDateClick: (d: Date) => void;
   onViewAppt: (a: any) => void;
   remindersByDate?: Record<string, any[]>;
+  onViewReminder?: (r: any) => void;
 }) {
   const start = startOfMonth(calendarMonth);
   const end = endOfMonth(calendarMonth);
@@ -1529,17 +1663,17 @@ function MonthView({ calendarMonth, monthAppts, onDateClick, onViewAppt, reminde
                 );
               })}
 
-              {/* Reminder mini-cards (from last month) */}
+              {/* Reminder mini-cards (from last month) — clickable */}
               {appts.length < maxVisible && reminders.slice(0, maxVisible - appts.length).map((r, ri) => (
-                <div key={`rem-${ri}`}
-                  className="rounded-md px-2 py-1 border text-left bg-amber-50 border-amber-200 text-amber-800"
-                  onClick={e => e.stopPropagation()}>
+                <button key={`rem-${ri}`} type="button"
+                  className="rounded-md px-2 py-1 border text-left bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100 transition-colors w-full"
+                  onClick={e => { e.stopPropagation(); onViewReminder?.(r); }}>
                   <div className="flex items-center gap-1">
                     <Bell className="w-2.5 h-2.5 shrink-0 text-amber-500" />
                     <p className="text-[11px] font-bold leading-tight truncate">{r.customerName}</p>
                   </div>
                   {r.services?.[0] && <p className="text-[10px] leading-tight truncate opacity-70 pl-3.5">{r.services[0]}</p>}
-                </div>
+                </button>
               ))}
 
               {totalItems > maxVisible && (
@@ -1569,6 +1703,7 @@ export default function Appointments() {
   const [editingAppt, setEditingAppt] = useState<any>(null);
   const [deletingAppt, setDeletingAppt] = useState<any>(null);
   const [viewingAppt, setViewingAppt] = useState<any>(null);
+  const [viewingReminder, setViewingReminder] = useState<any>(null);
   const [apptPage, setApptPage] = useState(1);
 
   const [dayAppointments, setDayAppointments] = useState<any[]>([]);
@@ -1834,6 +1969,7 @@ export default function Appointments() {
               onDateClick={d => { handleSelectDate(d); setView("calendar"); }}
               onViewAppt={setViewingAppt}
               remindersByDate={remindersByDate}
+              onViewReminder={setViewingReminder}
             />
           ) : view === "calendar" ? (
             <>
@@ -1847,7 +1983,9 @@ export default function Appointments() {
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {remindersByDate[dateStr].map((r, i) => (
-                      <div key={i} className="flex items-center gap-2 bg-white rounded-lg px-3 py-1.5 border border-amber-200 text-xs shadow-sm">
+                      <button key={i} type="button"
+                        onClick={() => setViewingReminder(r)}
+                        className="flex items-center gap-2 bg-white rounded-lg px-3 py-1.5 border border-amber-200 text-xs shadow-sm hover:bg-amber-50 hover:border-amber-300 transition-colors cursor-pointer text-left">
                         <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
                           <User className="w-3 h-3 text-amber-600" />
                         </div>
@@ -1860,7 +1998,7 @@ export default function Appointments() {
                         {r.customerPhone && (
                           <span className="text-amber-400 font-mono text-[10px] shrink-0">{r.customerPhone}</span>
                         )}
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -2034,6 +2172,20 @@ export default function Appointments() {
           appt={deletingAppt}
           onClose={() => setDeletingAppt(null)}
           onConfirm={handleDelete}
+        />
+      )}
+
+      {/* ── Reminder Detail Modal ── */}
+      {viewingReminder && (
+        <ReminderDetailModal
+          reminder={viewingReminder}
+          onClose={() => setViewingReminder(null)}
+          onBookNow={() => {
+            setViewingReminder(null);
+            setDefaultBookingStaff("");
+            setDefaultBookingTime("");
+            setShowBookingModal(true);
+          }}
         />
       )}
     </div>
