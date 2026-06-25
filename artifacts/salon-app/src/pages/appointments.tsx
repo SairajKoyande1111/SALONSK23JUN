@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, RefObject } from "react";
+import { createPortal } from "react-dom";
 import {
   useListCustomers, useListStaff, useListServices,
   useCreateAppointment,
@@ -1110,6 +1111,70 @@ function ApptDetailModal({ appt, onClose, onEdit, onDelete, onStatusChange }: {
   );
 }
 
+// ─── Context Menu Portal (escapes overflow-hidden) ────────────────────────────
+function ContextMenuPortal({ appt, serviceName, status, id, onView, onEdit, onDelete, onStatusChange, onClose, cardRef }: {
+  appt: any; serviceName: string; status: string; id: string;
+  onView: (a: any) => void; onEdit: (a: any) => void; onDelete: (a: any) => void;
+  onStatusChange: (id: string, status: string) => void;
+  onClose: () => void; cardRef: RefObject<HTMLDivElement>;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (cardRef.current) {
+      const r = cardRef.current.getBoundingClientRect();
+      const menuW = 176;
+      const left = r.left - menuW - 4;
+      setPos({ top: r.top + window.scrollY, left: Math.max(4, left) });
+    }
+    const h = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node) &&
+          cardRef.current && !cardRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  return createPortal(
+    <div ref={menuRef}
+      className="fixed bg-white rounded-xl shadow-2xl border border-border z-[9999] overflow-hidden"
+      style={{ top: pos.top, left: pos.left, minWidth: 176 }}
+      onClick={e => e.stopPropagation()}>
+      <div className="px-3 py-2.5 border-b border-border/50 bg-gray-50">
+        <p className="text-xs font-bold truncate">{appt.customerName || "Walk-in"}</p>
+        <p className="text-[10px] text-muted-foreground truncate">{serviceName}</p>
+      </div>
+      <div className="py-1">
+        <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Change Status</p>
+        {STATUS_OPTIONS.filter(s => s !== status).map(s => (
+          <button key={s}
+            className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/60 transition-colors capitalize"
+            onClick={() => { onStatusChange(id, s); onClose(); }}>
+            Mark as {s.replace("-", " ")}
+          </button>
+        ))}
+        <div className="border-t border-border/50 my-1" />
+        <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center gap-2"
+          onClick={() => { onView(appt); onClose(); }}>
+          <Clock className="w-3 h-3" /> View Details
+        </button>
+        <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center gap-2"
+          onClick={() => { onEdit(appt); onClose(); }}>
+          <Pencil className="w-3 h-3" /> Edit
+        </button>
+        <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-600 transition-colors flex items-center gap-2"
+          onClick={() => { onDelete(appt); onClose(); }}>
+          <Trash2 className="w-3 h-3" /> Delete
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Calendar Appointment Block ───────────────────────────────────────────────
 function CalendarApptBlock({ appt, top, height, onEdit, onDelete, onStatusChange, onView }: {
   appt: any; top: number; height: number;
@@ -1119,14 +1184,6 @@ function CalendarApptBlock({ appt, top, height, onEdit, onDelete, onStatusChange
 }) {
   const [showMenu, setShowMenu] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setShowMenu(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
 
   const status = appt.status || "scheduled";
   const id = appt.id || appt._id;
@@ -1140,26 +1197,27 @@ function CalendarApptBlock({ appt, top, height, onEdit, onDelete, onStatusChange
     : appt.serviceName || "";
 
   const cardH = Math.max(height - 4, 32);
+  const showService = cardH >= 44 && !!serviceName;
+  const showPhone = cardH >= 72 && !!appt.customerPhone;
 
   return (
     <div ref={ref}
-      className={`absolute left-1 right-1 rounded-lg border overflow-hidden cursor-pointer shadow-sm hover:shadow-md hover:brightness-[0.97] transition-all z-[5] ${calBg[status] || calBg.scheduled}`}
+      className={`absolute left-1 right-1 rounded-lg border cursor-pointer shadow-sm hover:shadow-md hover:brightness-[0.97] transition-all z-[5] ${calBg[status] || calBg.scheduled}`}
       style={{ top: top + 2, height: cardH }}
       onClick={() => { if (!showMenu) onView(appt); }}
     >
-      {/* Content */}
-      <div className={`h-full px-2 pt-1.5 pb-1 flex flex-col overflow-hidden ${calTextColor[status] || calTextColor.scheduled}`}>
-        {/* Time line */}
+      {/* Content — overflow-hidden only on inner div so menu can escape */}
+      <div className={`h-full px-2 pt-1.5 pb-1 flex flex-col overflow-hidden rounded-lg ${calTextColor[status] || calTextColor.scheduled}`}>
+        {/* Time + 3-dot button row */}
         <div className="flex items-center justify-between gap-1 mb-0.5">
           <p className={`text-[10px] font-semibold leading-tight truncate ${calTimeColor[status] || calTimeColor.scheduled}`}>
             {startTimeStr}–{endTimeStr}
           </p>
-          {/* 3-dot menu */}
           <button
-            className="shrink-0 w-4 h-4 flex items-center justify-center rounded hover:bg-black/10 transition-colors z-10"
+            className="shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-black/10 transition-colors"
             onClick={e => { e.stopPropagation(); setShowMenu(m => !m); }}
           >
-            <MoreHorizontal className="w-3 h-3 opacity-60" />
+            <MoreHorizontal className="w-3.5 h-3.5 opacity-70" />
           </button>
         </div>
 
@@ -1168,51 +1226,31 @@ function CalendarApptBlock({ appt, top, height, onEdit, onDelete, onStatusChange
           {appt.customerName || "Walk-in"}
         </p>
 
-        {/* Service */}
-        {cardH >= 58 && serviceName && (
+        {/* Service — always show when height allows (>=44px) */}
+        {showService && (
           <p className="text-[10px] leading-tight truncate opacity-75 mt-0.5">{serviceName}</p>
         )}
 
         {/* Phone */}
-        {cardH >= 76 && appt.customerPhone && (
+        {showPhone && (
           <p className="text-[10px] leading-tight truncate opacity-55 mt-0.5">{appt.customerPhone}</p>
         )}
       </div>
 
-      {/* Context menu — renders on LEFT to avoid right-edge clipping */}
+      {/* Context menu — outside inner div, uses fixed positioning to escape any overflow clipping */}
       {showMenu && (
-        <div
-          className="absolute top-0 right-full mr-1 bg-white rounded-xl shadow-2xl border border-border z-[100] overflow-hidden min-w-[168px]"
-          style={{ top: 0 }}
-          onClick={e => e.stopPropagation()}>
-          <div className="px-3 py-2.5 border-b border-border/50 bg-gray-50">
-            <p className="text-xs font-bold truncate">{appt.customerName || "Walk-in"}</p>
-            <p className="text-[10px] text-muted-foreground truncate">{serviceName}</p>
-          </div>
-          <div className="py-1">
-            <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Change Status</p>
-            {STATUS_OPTIONS.filter(s => s !== status).map(s => (
-              <button key={s}
-                className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/60 transition-colors capitalize"
-                onClick={() => { onStatusChange(id, s); setShowMenu(false); }}>
-                Mark as {s.replace("-", " ")}
-              </button>
-            ))}
-            <div className="border-t border-border/50 my-1" />
-            <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center gap-2"
-              onClick={() => { onView(appt); setShowMenu(false); }}>
-              <Clock className="w-3 h-3" /> View Details
-            </button>
-            <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center gap-2"
-              onClick={() => { onEdit(appt); setShowMenu(false); }}>
-              <Pencil className="w-3 h-3" /> Edit
-            </button>
-            <button className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-600 transition-colors flex items-center gap-2"
-              onClick={() => { onDelete(appt); setShowMenu(false); }}>
-              <Trash2 className="w-3 h-3" /> Delete
-            </button>
-          </div>
-        </div>
+        <ContextMenuPortal
+          appt={appt}
+          serviceName={serviceName}
+          status={status}
+          id={id}
+          onView={onView}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onStatusChange={onStatusChange}
+          onClose={() => setShowMenu(false)}
+          cardRef={ref}
+        />
       )}
     </div>
   );
