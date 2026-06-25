@@ -3,6 +3,54 @@ import { Appointment, Customer, Service, Staff } from "../models/index.js";
 
 const router = Router();
 
+// ── Reminders: last month's appointments mapped to same day this month ─────────
+router.get("/appointments/reminders", async (req, res) => {
+  const { month } = req.query as Record<string, string>;
+  if (!month) return res.json({ reminders: {} });
+
+  // Strict validation: must be exactly "yyyy-MM" with a valid month 01–12
+  if (!/^\d{4}-\d{2}$/.test(month)) return res.json({ reminders: {} });
+  const [year, mon] = month.split("-").map(Number);
+  if (mon < 1 || mon > 12) return res.json({ reminders: {} });
+
+  // Derive previous month
+  const prevYear = mon === 1 ? year - 1 : year;
+  const prevMon  = mon === 1 ? 12 : mon - 1;
+  const prevMonthStr = `${prevYear}-${String(prevMon).padStart(2, "0")}`;
+
+  // Project only the fields we need to keep the payload lean
+  const prevAppts = await Appointment.find(
+    { appointmentDate: { $regex: `^${prevMonthStr}` } },
+    { customerName: 1, customerPhone: 1, customerId: 1, services: 1, serviceName: 1, appointmentDate: 1, appointmentTime: 1 }
+  ).sort({ appointmentTime: 1 }).lean();
+
+  // Days in the requested (current) month — clip days that don't exist
+  const daysInCurrentMonth = new Date(year, mon, 0).getDate();
+
+  const reminders: Record<string, any[]> = {};
+  for (const appt of prevAppts) {
+    const parts = (appt.appointmentDate as string).split("-");
+    if (parts.length !== 3) continue;
+    const dayOfMonth = parseInt(parts[2], 10);
+    if (isNaN(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > daysInCurrentMonth) continue;
+
+    // Normalised key always matches front-end's yyyy-MM-dd format
+    const reminderDate = `${year}-${String(mon).padStart(2, "0")}-${String(dayOfMonth).padStart(2, "0")}`;
+    if (!reminders[reminderDate]) reminders[reminderDate] = [];
+
+    const a = appt as any;
+    reminders[reminderDate].push({
+      customerName:  a.customerName || "Walk-in",
+      customerPhone: a.customerPhone || "",
+      customerId:    a.customerId || null,
+      services:      a.services?.map((s: any) => s.serviceName).filter(Boolean) || (a.serviceName ? [a.serviceName] : []),
+      lastVisitDate: a.appointmentDate,
+    });
+  }
+
+  res.json({ reminders });
+});
+
 router.get("/appointments", async (req, res) => {
   const { date, month } = req.query as Record<string, string>;
 

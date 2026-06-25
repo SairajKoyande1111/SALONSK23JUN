@@ -11,7 +11,7 @@ import {
 import {
   Calendar as CalendarIcon, User, ChevronLeft, ChevronRight, Plus, X,
   Search, UserPlus, Pencil, Trash2, Clock, Filter, MoreHorizontal,
-  LayoutGrid, List,
+  LayoutGrid, List, Bell,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -463,10 +463,11 @@ function CustomerSelect({ value, onChange, customers, onCustomerCreated }: {
 }
 
 // ─── Mini Calendar ────────────────────────────────────────────────────────────
-function MiniCalendar({ selectedDate, onSelectDate, calendarMonth, onChangeMonth, markedDates }: {
+function MiniCalendar({ selectedDate, onSelectDate, calendarMonth, onChangeMonth, markedDates, reminderDates }: {
   selectedDate: Date; onSelectDate: (d: Date) => void;
   calendarMonth: Date; onChangeMonth: (d: Date) => void;
   markedDates: Set<string>;
+  reminderDates?: Set<string>;
 }) {
   const days = eachDayOfInterval({ start: startOfMonth(calendarMonth), end: endOfMonth(calendarMonth) });
   const startDay = getDay(startOfMonth(calendarMonth));
@@ -493,6 +494,7 @@ function MiniCalendar({ selectedDate, onSelectDate, calendarMonth, onChangeMonth
           const ds = format(day, "yyyy-MM-dd");
           const isSelected = isSameDay(day, selectedDate);
           const hasAppts = markedDates.has(ds);
+          const hasReminder = reminderDates?.has(ds) ?? false;
           const today = isToday(day);
           return (
             <div key={ds} className="flex flex-col items-center py-0.5">
@@ -502,18 +504,27 @@ function MiniCalendar({ selectedDate, onSelectDate, calendarMonth, onChangeMonth
                   ${isSelected ? "bg-primary text-white shadow-sm" : today ? "border-2 border-primary text-primary font-bold" : "hover:bg-muted text-foreground"}`}>
                 {format(day, "d")}
               </button>
-              {hasAppts && <div className={`w-1.5 h-1.5 rounded-full mt-0.5 ${isSelected ? "bg-white/80" : "bg-primary"}`} />}
-              {!hasAppts && <div className="h-1.5" />}
+              <div className="flex items-center gap-0.5 mt-0.5 h-1.5">
+                {hasAppts && <div className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-white/80" : "bg-primary"}`} />}
+                {hasReminder && <div className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-amber-300" : "bg-amber-400"}`} />}
+              </div>
             </div>
           );
         })}
       </div>
-      <div className="mt-3 pt-3 border-t border-border/50">
+      <div className="mt-3 pt-3 border-t border-border/50 space-y-1.5">
         <button
           onClick={() => { const t = new Date(); onSelectDate(t); onChangeMonth(t); }}
           className="w-full text-xs text-primary font-semibold hover:bg-primary/5 py-1.5 rounded-lg transition-colors">
           Go to Today
         </button>
+        {/* Reminder legend */}
+        {reminderDates && reminderDates.size > 0 && (
+          <div className="flex items-center gap-1.5 justify-center pt-0.5">
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+            <span className="text-[10px] text-muted-foreground">Follow-up reminder</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1425,11 +1436,12 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
 }
 
 // ─── Month View ───────────────────────────────────────────────────────────────
-function MonthView({ calendarMonth, monthAppts, onDateClick, onViewAppt }: {
+function MonthView({ calendarMonth, monthAppts, onDateClick, onViewAppt, remindersByDate }: {
   calendarMonth: Date;
   monthAppts: any[];
   onDateClick: (d: Date) => void;
   onViewAppt: (a: any) => void;
+  remindersByDate?: Record<string, any[]>;
 }) {
   const start = startOfMonth(calendarMonth);
   const end = endOfMonth(calendarMonth);
@@ -1470,8 +1482,12 @@ function MonthView({ calendarMonth, monthAppts, onDateClick, onViewAppt }: {
 
           const ds = format(day, "yyyy-MM-dd");
           const appts = apptsByDate[ds] || [];
+          const reminders = remindersByDate?.[ds] || [];
           const today = isToday(day);
-          const isCurrentMonth = true;
+
+          // How many appointment-type items fit before overflow
+          const maxVisible = 3;
+          const totalItems = appts.length + reminders.length;
 
           return (
             <div key={ds}
@@ -1479,21 +1495,28 @@ function MonthView({ calendarMonth, monthAppts, onDateClick, onViewAppt }: {
                 ${today ? "bg-primary/5" : "hover:bg-muted/30"}`}
               onClick={() => onDateClick(day)}>
 
-              {/* Date number */}
+              {/* Date number + counts */}
               <div className="flex items-center justify-between mb-0.5">
                 <span className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full leading-none
                   ${today ? "bg-primary text-white" : "text-foreground group-hover:bg-primary/10 group-hover:text-primary"}`}>
                   {format(day, "d")}
                 </span>
-                {appts.length > 0 && (
-                  <span className="text-[10px] font-semibold text-primary/80 bg-primary/10 rounded-full px-1.5 py-0.5 leading-none">
-                    {appts.length}
-                  </span>
-                )}
+                <div className="flex items-center gap-1">
+                  {appts.length > 0 && (
+                    <span className="text-[10px] font-semibold text-primary/80 bg-primary/10 rounded-full px-1.5 py-0.5 leading-none">
+                      {appts.length}
+                    </span>
+                  )}
+                  {reminders.length > 0 && (
+                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 rounded-full px-1.5 py-0.5 leading-none flex items-center gap-0.5">
+                      <Bell className="w-2.5 h-2.5" />{reminders.length}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Appointment mini-cards */}
-              {appts.slice(0, 3).map(a => {
+              {appts.slice(0, Math.min(appts.length, maxVisible)).map(a => {
                 const svc = a.services?.length > 0 ? a.services[0].serviceName : (a.serviceName || "");
                 const status = a.status || "scheduled";
                 return (
@@ -1506,8 +1529,21 @@ function MonthView({ calendarMonth, monthAppts, onDateClick, onViewAppt }: {
                 );
               })}
 
-              {appts.length > 3 && (
-                <p className="text-[10px] text-primary font-semibold pl-1">+{appts.length - 3} more</p>
+              {/* Reminder mini-cards (from last month) */}
+              {appts.length < maxVisible && reminders.slice(0, maxVisible - appts.length).map((r, ri) => (
+                <div key={`rem-${ri}`}
+                  className="rounded-md px-2 py-1 border text-left bg-amber-50 border-amber-200 text-amber-800"
+                  onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center gap-1">
+                    <Bell className="w-2.5 h-2.5 shrink-0 text-amber-500" />
+                    <p className="text-[11px] font-bold leading-tight truncate">{r.customerName}</p>
+                  </div>
+                  {r.services?.[0] && <p className="text-[10px] leading-tight truncate opacity-70 pl-3.5">{r.services[0]}</p>}
+                </div>
+              ))}
+
+              {totalItems > maxVisible && (
+                <p className="text-[10px] text-primary font-semibold pl-1">+{totalItems - maxVisible} more</p>
               )}
             </div>
           );
@@ -1539,6 +1575,7 @@ export default function Appointments() {
   const [dayLoading, setDayLoading] = useState(false);
   const [markedDates, setMarkedDates] = useState<Set<string>>(new Set());
   const [monthAppts, setMonthAppts] = useState<any[]>([]);
+  const [remindersByDate, setRemindersByDate] = useState<Record<string, any[]>>({});
 
   const { data: customersData } = useListCustomers();
   const { data: staffData } = useListStaff();
@@ -1565,19 +1602,43 @@ export default function Appointments() {
     }
   };
 
-  const fetchMonthMarkers = async () => {
+  const fetchMonthMarkers = async (signal?: AbortSignal) => {
     try {
-      const res = await fetch(`${API_BASE}/appointments?month=${monthStr}`);
+      const res = await fetch(`${API_BASE}/appointments?month=${monthStr}`, { signal });
+      if (!res.ok) return;
       const data = await res.json();
       const appts = data.appointments || [];
       const dates = new Set<string>(appts.map((a: any) => a.appointmentDate));
       setMarkedDates(dates);
       setMonthAppts(appts);
-    } catch {}
+    } catch (e: any) {
+      if (e?.name !== "AbortError") console.error("fetchMonthMarkers", e);
+    }
   };
 
-  useEffect(() => { fetchDayAppointments(); }, [dateStr]);
-  useEffect(() => { fetchMonthMarkers(); }, [monthStr]);
+  const fetchReminders = async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch(`${API_BASE}/appointments/reminders?month=${monthStr}`, { signal });
+      if (!res.ok) return;
+      const data = await res.json();
+      setRemindersByDate(data.reminders || {});
+    } catch (e: any) {
+      if (e?.name !== "AbortError") console.error("fetchReminders", e);
+    }
+  };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchDayAppointments();
+    return () => controller.abort();
+  }, [dateStr]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchMonthMarkers(controller.signal);
+    fetchReminders(controller.signal);
+    return () => controller.abort();
+  }, [monthStr]);
 
   const handleSelectDate = (d: Date) => {
     setSelectedDate(d);
@@ -1732,6 +1793,7 @@ export default function Appointments() {
               calendarMonth={calendarMonth}
               onChangeMonth={setCalendarMonth}
               markedDates={markedDates}
+              reminderDates={new Set(Object.keys(remindersByDate))}
             />
             {/* Legend */}
             <div className="bg-card border border-border/50 rounded-2xl p-4 shadow-sm space-y-2">
@@ -1771,9 +1833,39 @@ export default function Appointments() {
               monthAppts={monthAppts}
               onDateClick={d => { handleSelectDate(d); setView("calendar"); }}
               onViewAppt={setViewingAppt}
+              remindersByDate={remindersByDate}
             />
           ) : view === "calendar" ? (
             <>
+            {/* ── Follow-up Reminder Strip ── */}
+            {!dayLoading && (remindersByDate[dateStr]?.length ?? 0) > 0 && (
+              <div className="shrink-0 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+                <Bell className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-amber-800 mb-2">
+                    Follow-up Reminders — {remindersByDate[dateStr].length} customer{remindersByDate[dateStr].length !== 1 ? "s" : ""} visited on this date last month
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {remindersByDate[dateStr].map((r, i) => (
+                      <div key={i} className="flex items-center gap-2 bg-white rounded-lg px-3 py-1.5 border border-amber-200 text-xs shadow-sm">
+                        <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                          <User className="w-3 h-3 text-amber-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-amber-900 leading-tight">{r.customerName}</p>
+                          {r.services?.length > 0 && (
+                            <p className="text-amber-600 leading-tight truncate max-w-[160px]">{r.services.join(", ")}</p>
+                          )}
+                        </div>
+                        {r.customerPhone && (
+                          <span className="text-amber-400 font-mono text-[10px] shrink-0">{r.customerPhone}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
             <CalendarGrid
               appointments={dayAppointments}
               staff={staff}
