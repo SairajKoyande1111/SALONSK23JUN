@@ -1424,12 +1424,105 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
   );
 }
 
+// ─── Month View ───────────────────────────────────────────────────────────────
+function MonthView({ calendarMonth, monthAppts, onDateClick, onViewAppt }: {
+  calendarMonth: Date;
+  monthAppts: any[];
+  onDateClick: (d: Date) => void;
+  onViewAppt: (a: any) => void;
+}) {
+  const start = startOfMonth(calendarMonth);
+  const end = endOfMonth(calendarMonth);
+  const days = eachDayOfInterval({ start, end });
+  const startPad = getDay(start);
+
+  const apptsByDate = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    monthAppts.forEach(a => {
+      const d = a.appointmentDate;
+      if (!map[d]) map[d] = [];
+      map[d].push(a);
+    });
+    return map;
+  }, [monthAppts]);
+
+  const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const cells: (Date | null)[] = [...Array(startPad).fill(null), ...days];
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  return (
+    <div className="flex-1 overflow-auto bg-card rounded-xl border border-border/50 flex flex-col">
+      {/* Weekday header */}
+      <div className="grid grid-cols-7 border-b border-border/40 shrink-0">
+        {weekDays.map(d => (
+          <div key={d} className="py-2.5 text-center text-[11px] font-bold text-muted-foreground uppercase tracking-widest">
+            {d}
+          </div>
+        ))}
+      </div>
+
+      {/* Date cells */}
+      <div className="grid grid-cols-7 flex-1" style={{ gridAutoRows: "minmax(110px, 1fr)" }}>
+        {cells.map((day, i) => {
+          if (!day) return (
+            <div key={`pad-${i}`} className="border-r border-b border-border/20 bg-muted/10" />
+          );
+
+          const ds = format(day, "yyyy-MM-dd");
+          const appts = apptsByDate[ds] || [];
+          const today = isToday(day);
+          const isCurrentMonth = true;
+
+          return (
+            <div key={ds}
+              className={`border-r border-b border-border/20 p-1.5 flex flex-col gap-1 cursor-pointer transition-colors group
+                ${today ? "bg-primary/5" : "hover:bg-muted/30"}`}
+              onClick={() => onDateClick(day)}>
+
+              {/* Date number */}
+              <div className="flex items-center justify-between mb-0.5">
+                <span className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full leading-none
+                  ${today ? "bg-primary text-white" : "text-foreground group-hover:bg-primary/10 group-hover:text-primary"}`}>
+                  {format(day, "d")}
+                </span>
+                {appts.length > 0 && (
+                  <span className="text-[10px] font-semibold text-primary/80 bg-primary/10 rounded-full px-1.5 py-0.5 leading-none">
+                    {appts.length}
+                  </span>
+                )}
+              </div>
+
+              {/* Appointment mini-cards */}
+              {appts.slice(0, 3).map(a => {
+                const svc = a.services?.length > 0 ? a.services[0].serviceName : (a.serviceName || "");
+                const status = a.status || "scheduled";
+                return (
+                  <div key={a.id || a._id}
+                    className={`rounded-md px-2 py-1 border text-left transition-opacity hover:opacity-80 ${calBg[status] || calBg.scheduled} ${calTextColor[status] || calTextColor.scheduled}`}
+                    onClick={e => { e.stopPropagation(); onViewAppt(a); }}>
+                    <p className="text-[11px] font-bold leading-tight truncate">{a.customerName || "Walk-in"}</p>
+                    {svc && <p className="text-[10px] leading-tight truncate opacity-70">{svc}</p>}
+                  </div>
+                );
+              })}
+
+              {appts.length > 3 && (
+                <p className="text-[10px] text-primary font-semibold pl-1">+{appts.length - 3} more</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 const APPT_PAGE_SIZE = 10;
 
 export default function Appointments() {
   const { toast } = useToast();
-  const [view, setView] = useState<"calendar" | "list">("calendar");
+  const [view, setView] = useState<"calendar" | "list" | "month">("calendar");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [showCalPanel, setShowCalPanel] = useState(false);
@@ -1445,6 +1538,7 @@ export default function Appointments() {
   const [dayAppointments, setDayAppointments] = useState<any[]>([]);
   const [dayLoading, setDayLoading] = useState(false);
   const [markedDates, setMarkedDates] = useState<Set<string>>(new Set());
+  const [monthAppts, setMonthAppts] = useState<any[]>([]);
 
   const { data: customersData } = useListCustomers();
   const { data: staffData } = useListStaff();
@@ -1475,8 +1569,10 @@ export default function Appointments() {
     try {
       const res = await fetch(`${API_BASE}/appointments?month=${monthStr}`);
       const data = await res.json();
-      const dates = new Set<string>((data.appointments || []).map((a: any) => a.appointmentDate));
+      const appts = data.appointments || [];
+      const dates = new Set<string>(appts.map((a: any) => a.appointmentDate));
       setMarkedDates(dates);
+      setMonthAppts(appts);
     } catch {}
   };
 
@@ -1558,7 +1654,11 @@ export default function Appointments() {
         <div className="flex bg-muted rounded-xl p-1 gap-0.5">
           <button onClick={() => setView("calendar")}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${view === "calendar" ? "bg-white shadow text-primary" : "text-muted-foreground hover:text-foreground"}`}>
-            <LayoutGrid className="w-3.5 h-3.5" /> Calendar
+            <LayoutGrid className="w-3.5 h-3.5" /> Day
+          </button>
+          <button onClick={() => { setView("month"); setCalendarMonth(selectedDate); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${view === "month" ? "bg-white shadow text-primary" : "text-muted-foreground hover:text-foreground"}`}>
+            <CalendarIcon className="w-3.5 h-3.5" /> Month
           </button>
           <button onClick={() => setView("list")}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${view === "list" ? "bg-white shadow text-primary" : "text-muted-foreground hover:text-foreground"}`}>
@@ -1567,23 +1667,43 @@ export default function Appointments() {
         </div>
 
         {/* Date navigation */}
-        <div className="flex items-center gap-1">
-          <button onClick={() => handleSelectDate(subDays(selectedDate, 1))}
-            className="p-2 rounded-xl border border-border hover:bg-muted transition-colors">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <button onClick={() => handleSelectDate(new Date())}
-            className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-colors ${isSelectedToday ? "border-primary bg-primary/5 text-primary" : "border-border hover:bg-muted"}`}>
-            Today
-          </button>
-          <span className="text-sm font-bold min-w-[110px] text-center select-none">
-            {format(selectedDate, "dd MMM yyyy")}
-          </span>
-          <button onClick={() => handleSelectDate(addDays(selectedDate, 1))}
-            className="p-2 rounded-xl border border-border hover:bg-muted transition-colors">
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
+        {view === "month" ? (
+          <div className="flex items-center gap-1">
+            <button onClick={() => setCalendarMonth(m => subMonths(m, 1))}
+              className="p-2 rounded-xl border border-border hover:bg-muted transition-colors">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button onClick={() => setCalendarMonth(new Date())}
+              className="px-3 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted transition-colors">
+              Today
+            </button>
+            <span className="text-sm font-bold min-w-[110px] text-center select-none">
+              {format(calendarMonth, "MMM yyyy")}
+            </span>
+            <button onClick={() => setCalendarMonth(m => addMonths(m, 1))}
+              className="p-2 rounded-xl border border-border hover:bg-muted transition-colors">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1">
+            <button onClick={() => handleSelectDate(subDays(selectedDate, 1))}
+              className="p-2 rounded-xl border border-border hover:bg-muted transition-colors">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button onClick={() => handleSelectDate(new Date())}
+              className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-colors ${isSelectedToday ? "border-primary bg-primary/5 text-primary" : "border-border hover:bg-muted"}`}>
+              Today
+            </button>
+            <span className="text-sm font-bold min-w-[110px] text-center select-none">
+              {format(selectedDate, "dd MMM yyyy")}
+            </span>
+            <button onClick={() => handleSelectDate(addDays(selectedDate, 1))}
+              className="p-2 rounded-xl border border-border hover:bg-muted transition-colors">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Mini calendar toggle */}
         <button onClick={() => setShowCalPanel(p => !p)}
@@ -1645,7 +1765,14 @@ export default function Appointments() {
         {/* Calendar / List view */}
         <div className="flex-1 overflow-hidden p-4 flex flex-col gap-3">
 
-          {view === "calendar" ? (
+          {view === "month" ? (
+            <MonthView
+              calendarMonth={calendarMonth}
+              monthAppts={monthAppts}
+              onDateClick={d => { handleSelectDate(d); setView("calendar"); }}
+              onViewAppt={setViewingAppt}
+            />
+          ) : view === "calendar" ? (
             <>
             <CalendarGrid
               appointments={dayAppointments}
