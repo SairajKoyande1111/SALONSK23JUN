@@ -3,9 +3,9 @@ import { useListServices, useListProducts, useListCustomers, useListStaff, useCr
 import {
   Search, Trash2, Receipt, CreditCard, Banknote, Smartphone,
   ChevronLeft, Wallet, UserPlus, X, Scissors, Package, Clock,
-  ChevronDown, UserCircle2, Tag, Check, BadgeCheck, Users, Plus
+  ChevronDown, UserCircle2, Tag, Check, BadgeCheck, Users, Plus, Crown
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 
 const API_BASE = "/api";
@@ -13,7 +13,7 @@ const noSpinner = "[appearance:textfield] [&::-webkit-outer-spin-button]:appeara
 
 type CartItem = {
   uid: string;
-  type: "service" | "product";
+  type: "service" | "product" | "membership";
   itemId: string;
   name: string;
   price: number;
@@ -21,6 +21,7 @@ type CartItem = {
   discountAmt: number;
   staffId?: string | null;
   staffName?: string;
+  durationMonths?: number;
 };
 
 const PAYMENT_METHODS = [
@@ -40,7 +41,10 @@ export default function POS() {
   const { data: staffData } = useListStaff();
   const createBill = useCreateBill();
 
-  const [activeTab, setActiveTab]           = useState<"services" | "products">("services");
+  const search2 = useSearch();
+  const editBillId = useMemo(() => new URLSearchParams(search2).get("editBill") || "", [search2]);
+
+  const [activeTab, setActiveTab]           = useState<"services" | "products" | "memberships">("services");
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [search, setSearch]                 = useState("");
   const [cart, setCart]                     = useState<CartItem[]>([]);
@@ -113,12 +117,45 @@ export default function POS() {
     fetch(`${API_BASE}/memberships`).then(r => r.json()).then(d => setMembershipPlans(d.memberships || [])).catch(() => {});
   }, []);
 
+  // Load existing bill when in edit mode
+  useEffect(() => {
+    if (!editBillId) return;
+    fetch(`${API_BASE}/bills/${editBillId}`)
+      .then(r => r.json())
+      .then((bill: any) => {
+        setCustomerId(bill.customerId || "");
+        setCustomerName(bill.customerName || "Walk-in Customer");
+        setCustomerPhone(bill.customerPhone || "");
+        setPaymentMethod(bill.paymentMethod || "upi");
+        setTaxEnabled((bill.taxPercent || 0) > 0);
+        setTaxRate(bill.taxPercent || 18);
+        setGlobalDiscountAmt(bill.discountAmount || 0);
+        const restoredCart: CartItem[] = (bill.items || []).map((item: any) => ({
+          uid: Math.random().toString(36).substr(2, 9),
+          type: item.type || "service",
+          itemId: item.itemId || "",
+          name: item.name || "",
+          price: item.price || 0,
+          quantity: item.quantity || 1,
+          discountAmt: item.discount || 0,
+          staffId: item.staffId || null,
+          staffName: item.staffName || "",
+          durationMonths: item.durationMonths,
+        }));
+        setCart(restoredCart);
+        if (bill.customerId) fetchMembership(bill.customerId);
+      })
+      .catch(() => {});
+  }, [editBillId]);
+
   const categories = useMemo(() => {
+    if (activeTab === "memberships") return ["All"];
     const items = activeTab === "services" ? services : products;
     return ["All", ...Array.from(new Set(items.map((i: any) => i.category).filter(Boolean)))];
   }, [services, products, activeTab]);
 
   const filteredItems = useMemo(() => {
+    if (activeTab === "memberships") return [];
     const items = activeTab === "services" ? services : products;
     return items.filter((item: any) =>
       item.name.toLowerCase().includes(search.toLowerCase()) &&
@@ -155,14 +192,33 @@ export default function POS() {
 
   const addToCart = (item: any, overridePrice?: number, overrideName?: string) => {
     const id    = item.id || item._id;
-    const price = overridePrice ?? (Number(activeTab === "services" ? item.price : item.sellingPrice) || 0);
+    const price = overridePrice ?? (Number(activeTab === "services" ? item.price : activeTab === "products" ? item.sellingPrice : item.price) || 0);
     const name  = overrideName ?? item.name;
     const discountAmt = activeTab === "services" ? Math.round(price * autoDiscountPct / 100) : 0;
+    const type = activeTab === "services" ? "service" : activeTab === "products" ? "product" : "membership";
     setCart(prev => [...prev, {
       uid: Math.random().toString(36).substr(2, 9),
-      type: activeTab === "services" ? "service" : "product",
+      type,
       itemId: id, name, price, quantity: 1, discountAmt,
       staffId: null, staffName: "",
+      durationMonths: activeTab === "memberships" ? (item.duration || item.durationMonths) : undefined,
+    }]);
+  };
+
+  const addMembershipToCart = (plan: any) => {
+    const alreadyInCart = cart.some(i => i.type === "membership" && i.itemId === (plan.id || plan._id));
+    if (alreadyInCart) return;
+    setCart(prev => [...prev, {
+      uid: Math.random().toString(36).substr(2, 9),
+      type: "membership",
+      itemId: plan.id || plan._id,
+      name: plan.name,
+      price: plan.price || 0,
+      quantity: 1,
+      discountAmt: 0,
+      staffId: null,
+      staffName: "",
+      durationMonths: plan.duration,
     }]);
   };
 
@@ -292,21 +348,55 @@ export default function POS() {
     finally { setAddLoading(false); }
   };
 
-  const handleGenerateBill = () => {
+  const handleGenerateBill = async () => {
     if (cart.length === 0) { toast({ title: "Cart is empty", description: "Add at least one item.", variant: "destructive" }); return; }
-    createBill.mutate({ data: {
+
+    const billData = {
       customerId: customerId || null, customerName: customerName || "Walk-in Customer", customerPhone: customerPhone || "",
-      items: cart.map(i => ({ type: i.type, itemId: i.itemId, name: i.name, staffId: i.staffId || null, staffName: i.staffName || null, price: i.price, quantity: i.quantity, discount: i.discountAmt, total: getItemTotal(i) })),
+      items: cart.map(i => ({ type: i.type, itemId: i.itemId, name: i.name, staffId: i.staffId || null, staffName: i.staffName || null, price: i.price, quantity: i.quantity, discount: i.discountAmt, total: getItemTotal(i), durationMonths: i.durationMonths })),
       subtotal, taxPercent, taxAmount, paymentMethod, discountAmount: globalDiscountAmount, finalAmount, status: "paid",
       notes: [specialLabel || membershipLabel, selectedMemberParentName ? `Family of ${selectedMemberParentName}` : ""].filter(Boolean).join(" · "),
-    } as any }, {
-      onSuccess: (bill: any) => {
-        toast({ title: "✓ Bill Generated!", description: `${(bill as any).billNumber} — ₹${finalAmount.toLocaleString("en-IN")}` });
+    };
+
+    const assignMembershipsForCustomer = async (cid: string) => {
+      const membershipItems = cart.filter(i => i.type === "membership");
+      for (const item of membershipItems) {
+        const today = new Date().toISOString().slice(0, 10);
+        await fetch(`${API_BASE}/customer-memberships`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ customerId: cid, membershipId: item.itemId, startDate: today }),
+        }).catch(() => {});
+      }
+    };
+
+    if (editBillId) {
+      // Edit mode: PUT to update existing bill
+      try {
+        const res = await fetch(`${API_BASE}/bills/${editBillId}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(billData),
+        });
+        if (!res.ok) throw new Error("Failed to update");
+        if (customerId && cart.some(i => i.type === "membership")) await assignMembershipsForCustomer(customerId);
+        toast({ title: "✓ Invoice Updated!", description: `Bill updated successfully — ₹${finalAmount.toLocaleString("en-IN")}` });
         setCart([]); setCustomerId(""); setCustomerName("Walk-in Customer"); setCustomerPhone("");
         setCustomerDob(""); setCustomerAnniversary(""); setGlobalDiscountAmt(0); setCustomerMembership(null);
-      },
-      onError: () => toast({ title: "Failed to generate bill", variant: "destructive" }),
-    });
+        window.location.href = "/invoices";
+      } catch {
+        toast({ title: "Failed to update bill", variant: "destructive" });
+      }
+    } else {
+      // New bill mode
+      createBill.mutate({ data: billData as any }, {
+        onSuccess: async (bill: any) => {
+          if (customerId && cart.some(i => i.type === "membership")) await assignMembershipsForCustomer(customerId);
+          toast({ title: "✓ Bill Generated!", description: `${(bill as any).billNumber} — ₹${finalAmount.toLocaleString("en-IN")}` });
+          setCart([]); setCustomerId(""); setCustomerName("Walk-in Customer"); setCustomerPhone("");
+          setCustomerDob(""); setCustomerAnniversary(""); setGlobalDiscountAmt(0); setCustomerMembership(null);
+        },
+        onError: () => toast({ title: "Failed to generate bill", variant: "destructive" }),
+      });
+    }
   };
 
   return (
@@ -324,21 +414,25 @@ export default function POS() {
           </Link>
           <div>
             <h1 className="font-bold text-lg leading-tight text-white tracking-wide" style={poppins}>Point of Sale</h1>
-            <p className="text-xs text-white/60">New Bill</p>
+            <p className="text-xs text-white/60">{editBillId ? "Edit Bill" : "New Bill"}</p>
           </div>
           <div className="flex-1" />
 
-          {/* Services / Products toggle */}
+          {/* Services / Products / Memberships toggle */}
           <div className="flex gap-1 p-1 rounded-xl bg-sidebar-accent">
-            {(["services", "products"] as const).map(tab => (
-              <button key={tab} onClick={() => { setActiveTab(tab); setActiveCategory("All"); setSearch(""); }}
-                className="px-5 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
+            {([
+              { id: "services", icon: Scissors, label: "Services" },
+              { id: "products", icon: Package, label: "Products" },
+              { id: "memberships", icon: Crown, label: "Membership" },
+            ] as const).map(tab => (
+              <button key={tab.id} onClick={() => { setActiveTab(tab.id); setActiveCategory("All"); setSearch(""); }}
+                className="px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
                 style={{
-                  background: activeTab === tab ? "white" : "transparent",
-                  color: activeTab === tab ? "hsl(var(--primary))" : "rgba(255,255,255,0.6)",
+                  background: activeTab === tab.id ? "white" : "transparent",
+                  color: activeTab === tab.id ? "hsl(var(--primary))" : "rgba(255,255,255,0.6)",
                 }}>
-                {tab === "services" ? <Scissors className="w-3.5 h-3.5" /> : <Package className="w-3.5 h-3.5" />}
-                <span className="capitalize">{tab}</span>
+                <tab.icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
               </button>
             ))}
           </div>
@@ -382,14 +476,51 @@ export default function POS() {
 
           {/* ── Main Grid ── */}
           <div className="flex-1 overflow-y-auto p-4 bg-muted/40">
-            {filteredItems.length === 0 ? (
+            {/* Membership Plans Grid */}
+            {activeTab === "memberships" && (
+              membershipPlans.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 gap-3">
+                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-primary/10">
+                    <Crown className="w-6 h-6 text-primary/40" />
+                  </div>
+                  <p className="text-sm font-medium text-muted-foreground">No membership plans found</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {membershipPlans.map((plan: any) => {
+                    const pid = plan.id || plan._id;
+                    const inCart = cart.some(c => c.type === "membership" && c.itemId === pid);
+                    return (
+                      <button key={pid} onClick={() => addMembershipToCart(plan)}
+                        disabled={inCart}
+                        className="relative text-left p-4 rounded-2xl bg-card transition-all active:scale-95 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{
+                          border: inCart ? "2px solid hsl(var(--primary))" : "1.5px solid hsl(var(--border))",
+                          boxShadow: inCart ? "0 4px 16px hsl(var(--primary) / 0.15)" : undefined,
+                        }}>
+                        {inCart && (
+                          <span className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full text-primary-foreground text-[10px] font-bold flex items-center justify-center bg-primary">✓</span>
+                        )}
+                        <Crown className="w-5 h-5 text-amber-500 mb-2" />
+                        <p className="font-bold text-sm leading-snug mb-1 pr-5 text-foreground">{plan.name}</p>
+                        <p className="text-[10px] text-muted-foreground mb-2">{plan.duration} months{plan.discountPercent > 0 ? ` · ${plan.discountPercent}% off` : ""}</p>
+                        <p className="text-base font-extrabold text-primary">₹{Number(plan.price || 0).toLocaleString("en-IN")}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              )
+            )}
+
+            {/* Services / Products Grid */}
+            {activeTab !== "memberships" && filteredItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-48 gap-3">
                 <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-primary/10">
                   <Receipt className="w-6 h-6 text-primary/40" />
                 </div>
                 <p className="text-sm font-medium text-muted-foreground">No {activeTab} found</p>
               </div>
-            ) : (
+            ) : activeTab !== "memberships" && (
               <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {filteredItems.map((item: any) => {
                   const id       = item.id || item._id;
@@ -571,6 +702,11 @@ export default function POS() {
                     <p className="font-extrabold text-sm shrink-0 text-white">₹{lineTotal.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</p>
                   </div>
                   <div className="flex items-center gap-2 px-3 pb-3">
+                    {item.type === "membership" && (
+                      <span className="flex-1 text-[10px] text-amber-300 font-medium flex items-center gap-1">
+                        <Crown className="w-3 h-3" /> {item.durationMonths ? `${item.durationMonths} months` : "Membership plan"}
+                      </span>
+                    )}
                     {item.type === "service" && (
                       <select value={item.staffId || ""} onChange={e => updateCartItem(item.uid, "staffId", e.target.value)}
                         className="flex-1 min-w-0 text-xs rounded-lg px-2 py-1.5 focus:outline-none border-0 bg-sidebar text-white">
@@ -702,7 +838,7 @@ export default function POS() {
             <button onClick={handleGenerateBill} disabled={cart.length === 0 || createBill.isPending}
               className={`w-full py-4 rounded-2xl font-bold text-base transition-all text-white ${cart.length > 0 ? "rose-gold-gradient" : "bg-sidebar-accent opacity-40 cursor-not-allowed"}`}
               style={cart.length > 0 ? { boxShadow: "0 4px 20px hsl(15 40% 60% / 0.45)" } : {}}>
-              {createBill.isPending ? "Processing..." : cart.length === 0 ? "Add items to generate bill" : `Generate Bill — ₹${finalAmount.toLocaleString("en-IN")}`}
+              {createBill.isPending ? "Processing..." : cart.length === 0 ? "Add items to generate bill" : editBillId ? `Update Invoice — ₹${finalAmount.toLocaleString("en-IN")}` : `Generate Bill — ₹${finalAmount.toLocaleString("en-IN")}`}
             </button>
           </div>
         </div>

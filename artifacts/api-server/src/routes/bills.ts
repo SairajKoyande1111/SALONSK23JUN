@@ -57,6 +57,58 @@ router.get("/bills/:billId", async (req, res) => {
   res.json({ ...bill.toObject(), id: bill._id.toString() });
 });
 
+router.put("/bills/:billId", async (req, res) => {
+  const { billId } = req.params;
+  const bill = await Bill.findById(billId);
+  if (!bill) return res.status(404).json({ error: "Bill not found" });
+
+  const {
+    customerId,
+    customerName,
+    customerPhone,
+    items,
+    subtotal,
+    taxPercent,
+    taxAmount,
+    discountAmount,
+    finalAmount,
+    paymentMethod,
+    status,
+    notes,
+  } = req.body;
+
+  // Reverse old customer stats, apply new ones
+  if (bill.customerId) {
+    await Customer.findByIdAndUpdate(bill.customerId, {
+      $inc: { totalSpend: -(bill.finalAmount || 0), totalVisits: -1 },
+    });
+  }
+
+  await Bill.findByIdAndUpdate(billId, {
+    customerId: customerId || undefined,
+    customerName: customerName || "Walk-in",
+    customerPhone: customerPhone || "",
+    items: items || [],
+    subtotal: subtotal || 0,
+    taxPercent: taxPercent || 0,
+    taxAmount: taxAmount || 0,
+    discountAmount: discountAmount || 0,
+    finalAmount,
+    paymentMethod,
+    status: status || "paid",
+    notes: notes || "",
+  });
+
+  if (customerId) {
+    await Customer.findByIdAndUpdate(customerId, {
+      $inc: { totalSpend: finalAmount, totalVisits: 1 },
+    });
+  }
+
+  const updated = await Bill.findById(billId);
+  res.json({ ...updated!.toObject(), id: updated!._id.toString() });
+});
+
 router.delete("/bills/:billId", async (req, res) => {
   const { billId } = req.params;
   const bill = await Bill.findById(billId);

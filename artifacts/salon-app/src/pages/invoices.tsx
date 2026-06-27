@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
-import { Search, FileText, X, Eye, Calendar, Phone, Trash2, AlertTriangle } from "lucide-react";
+import { Search, FileText, X, Eye, Calendar, Phone, Trash2, AlertTriangle, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { InvoiceModal } from "@/components/InvoiceModal";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 
 const API_BASE = "/api";
 
@@ -257,6 +258,14 @@ export default function Invoices() {
                         >
                           <Eye className="w-4 h-4" /> View
                         </button>
+                        <Link href={`/pos?editBill=${bill.id || bill._id}`}>
+                          <button
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 text-amber-600 hover:bg-amber-100 transition-colors text-sm font-semibold"
+                            title="Edit invoice"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        </Link>
                         <button
                           onClick={() => setDeleteBill(bill)}
                           className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors text-sm font-semibold"

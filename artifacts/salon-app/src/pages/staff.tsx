@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useListStaff, useCreateStaff } from "@workspace/api-client-react";
-import { Plus, Phone, X, Briefcase } from "lucide-react";
+import { Plus, Phone, X, Briefcase, Trash2, AlertTriangle } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 
@@ -13,6 +13,8 @@ export default function Staff() {
 
   const [showAdd, setShowAdd] = useState(false);
   const [formData, setFormData] = useState({ name: "", specialization: "Hair Stylist", commissionPercent: 10, phone: "" });
+  const [deleteStaff, setDeleteStaff] = useState<any>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,6 +26,22 @@ export default function Staff() {
         refetch();
       }
     });
+  };
+
+  const handleDelete = async () => {
+    if (!deleteStaff) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/staff/${deleteStaff.id || deleteStaff._id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete");
+      toast({ title: "Staff Member Removed", description: `${deleteStaff.name} has been deleted.` });
+      setDeleteStaff(null);
+      refetch();
+    } catch {
+      toast({ title: "Error", description: "Failed to delete staff member.", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -73,13 +91,20 @@ export default function Staff() {
                 </p>
               </div>
 
-              {/* Work History button */}
-              <div className="border-t border-border/50 pt-4">
-                <Link href={`/staff/${s.id || s._id}/history`}>
+              {/* Work History + Delete buttons */}
+              <div className="border-t border-border/50 pt-4 flex gap-2">
+                <Link href={`/staff/${s.id || s._id}/history`} className="flex-1">
                   <button className="w-full py-2.5 bg-primary/5 hover:bg-primary/10 text-primary rounded-xl font-semibold transition-colors text-sm flex items-center justify-center gap-2">
                     <Briefcase className="w-4 h-4" /> Work History
                   </button>
                 </Link>
+                <button
+                  onClick={() => setDeleteStaff(s)}
+                  className="py-2.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl font-semibold transition-colors text-sm flex items-center justify-center"
+                  title="Delete staff member"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             </div>
           ))}
@@ -127,6 +152,43 @@ export default function Staff() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteStaff && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-base">Delete Staff Member?</h3>
+                <p className="text-sm text-muted-foreground">This action cannot be undone.</p>
+              </div>
+            </div>
+            <div className="bg-rose-50 rounded-xl p-3 mb-5 text-sm text-rose-800">
+              <span className="font-semibold">{deleteStaff.name}</span> — {deleteStaff.specialization}
+              {deleteStaff.phone && <> &nbsp;·&nbsp; {deleteStaff.phone}</>}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteStaff(null)}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-border hover:bg-muted transition-colors text-sm font-semibold disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-colors text-sm font-semibold disabled:opacity-50"
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
           </div>
         </div>
       )}

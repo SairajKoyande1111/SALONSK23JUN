@@ -26,6 +26,14 @@ router.post("/staff", async (req, res) => {
   res.status(201).json({ ...member.toObject(), id: member._id.toString() });
 });
 
+router.delete("/staff/:staffId", async (req, res) => {
+  const { staffId } = req.params;
+  const member = await Staff.findById(staffId);
+  if (!member) return res.status(404).json({ error: "Staff member not found" });
+  await Staff.findByIdAndDelete(staffId);
+  res.json({ success: true });
+});
+
 router.get("/staff/:staffId/work-history", async (req, res) => {
   const { staffId } = req.params;
   const bills = await Bill.find({ "items.staffId": staffId }).sort({ createdAt: -1 });
