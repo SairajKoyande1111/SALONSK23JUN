@@ -5,7 +5,7 @@ import {
   ChevronLeft, Wallet, UserPlus, X, Scissors, Package, Clock,
   ChevronDown, UserCircle2, Tag, Check, BadgeCheck, Users, Plus, Crown
 } from "lucide-react";
-import { Link, useSearch } from "wouter";
+import { Link, useSearch, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 
 const API_BASE = "/api";
@@ -43,6 +43,7 @@ export default function POS() {
 
   const search2 = useSearch();
   const editBillId = useMemo(() => new URLSearchParams(search2).get("editBill") || "", [search2]);
+  const [, navigate] = useLocation();
 
   const [activeTab, setActiveTab]           = useState<"services" | "products" | "memberships">("services");
   const [activeCategory, setActiveCategory] = useState<string>("All");
@@ -72,6 +73,11 @@ export default function POS() {
   const [addLoading, setAddLoading]       = useState(false);
   const [membershipPlans, setMembershipPlans] = useState<any[]>([]);
   const [typePicker, setTypePicker]       = useState<any | null>(null);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  type POSFamilyAdd = { name: string; phone: string; gender: string; dob: string; anniversary: string };
+  const EMPTY_POS_ADD: POSFamilyAdd = { name: "", phone: "", gender: "", dob: "", anniversary: "" };
+  const [posFamilyToAdd, setPosFamilyToAdd] = useState<POSFamilyAdd[]>([]);
+  const [showPosFamilySection, setShowPosFamilySection] = useState(false);
 
   const taxPercent = taxEnabled ? taxRate : 0;
   const services   = servicesData?.services || [];
@@ -85,7 +91,15 @@ export default function POS() {
     return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }, []);
 
-  // Auto-discount: anniversary 40% > birthday 30% > membership %
+  // Discount from a membership plan that's being PURCHASED in this bill
+  const cartMembershipDiscount = useMemo(() => {
+    const cartMem = cart.find(i => i.type === "membership");
+    if (!cartMem) return { pct: 0, name: "" };
+    const plan = membershipPlans.find((p: any) => (p.id || p._id) === cartMem.itemId);
+    return { pct: plan?.discountPercent || 0, name: plan?.name || cartMem.name };
+  }, [cart.map(i => `${i.type}:${i.itemId}`).join(","), membershipPlans]); // eslint-disable-line
+
+  // Auto-discount: anniversary 40% > birthday 30% > existing membership % > new cart membership %
   const { autoDiscountPct, specialLabel, membershipLabel } = useMemo(() => {
     if (customerAnniversary?.length >= 7 && customerAnniversary.substring(5) === todayMMDD)
       return { autoDiscountPct: 40, specialLabel: "💐 Anniversary Special — 40% off!", membershipLabel: null };
@@ -93,8 +107,10 @@ export default function POS() {
       return { autoDiscountPct: 30, specialLabel: "🎂 Birthday Special — 30% off!", membershipLabel: null };
     if (customerMembership?.discountPercent > 0)
       return { autoDiscountPct: customerMembership.discountPercent, specialLabel: null, membershipLabel: `🏷 ${customerMembership.membershipName} — ${customerMembership.discountPercent}% off` };
+    if (cartMembershipDiscount.pct > 0)
+      return { autoDiscountPct: cartMembershipDiscount.pct, specialLabel: null, membershipLabel: `👑 ${cartMembershipDiscount.name} — ${cartMembershipDiscount.pct}% off on services` };
     return { autoDiscountPct: 0, specialLabel: null, membershipLabel: null };
-  }, [customerDob, customerAnniversary, customerMembership, todayMMDD]);
+  }, [customerDob, customerAnniversary, customerMembership, cartMembershipDiscount, todayMMDD]);
 
   // Retroactively apply discount to all service items already in cart when customer/discount changes
   useEffect(() => {
@@ -371,28 +387,60 @@ export default function POS() {
 
     if (editBillId) {
       // Edit mode: PUT to update existing bill
+      setIsEditSubmitting(true);
       try {
         const res = await fetch(`${API_BASE}/bills/${editBillId}`, {
           method: "PUT", headers: { "Content-Type": "application/json" },
           body: JSON.stringify(billData),
         });
-        if (!res.ok) throw new Error("Failed to update");
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody?.error || "Failed to update");
+        }
         if (customerId && cart.some(i => i.type === "membership")) await assignMembershipsForCustomer(customerId);
+        // Save any new family members added during membership purchase
+        if (customerId && posFamilyToAdd.filter(m => m.name.trim()).length > 0) {
+          const existing = (customers as any[]).find((c: any) => (c.id || c._id) === customerId);
+          const existingFM = Array.isArray(existing?.familyMembers) ? existing.familyMembers : [];
+          const merged = [...existingFM, ...posFamilyToAdd.filter(m => m.name.trim()).map(m => ({
+            name: m.name.trim(), phone: m.phone.trim(), gender: m.gender, dob: m.dob, anniversary: m.anniversary,
+          }))];
+          await fetch(`${API_BASE}/customers/${customerId}`, {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ familyMembers: merged }),
+          }).catch(() => {});
+        }
         toast({ title: "✓ Invoice Updated!", description: `Bill updated successfully — ₹${finalAmount.toLocaleString("en-IN")}` });
         setCart([]); setCustomerId(""); setCustomerName("Walk-in Customer"); setCustomerPhone("");
         setCustomerDob(""); setCustomerAnniversary(""); setGlobalDiscountAmt(0); setCustomerMembership(null);
-        window.location.href = "/invoices";
-      } catch {
-        toast({ title: "Failed to update bill", variant: "destructive" });
+        setPosFamilyToAdd([]); setShowPosFamilySection(false);
+        navigate("/invoices");
+      } catch (err: any) {
+        toast({ title: "Failed to update bill", description: err?.message || "Please try again.", variant: "destructive" });
+      } finally {
+        setIsEditSubmitting(false);
       }
     } else {
       // New bill mode
       createBill.mutate({ data: billData as any }, {
         onSuccess: async (bill: any) => {
           if (customerId && cart.some(i => i.type === "membership")) await assignMembershipsForCustomer(customerId);
+          // Save any new family members added during membership purchase
+          if (customerId && posFamilyToAdd.filter(m => m.name.trim()).length > 0) {
+            const existing = (customers as any[]).find((c: any) => (c.id || c._id) === customerId);
+            const existingFM = Array.isArray(existing?.familyMembers) ? existing.familyMembers : [];
+            const merged = [...existingFM, ...posFamilyToAdd.filter(m => m.name.trim()).map(m => ({
+              name: m.name.trim(), phone: m.phone.trim(), gender: m.gender, dob: m.dob, anniversary: m.anniversary,
+            }))];
+            await fetch(`${API_BASE}/customers/${customerId}`, {
+              method: "PATCH", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ familyMembers: merged }),
+            }).catch(() => {});
+          }
           toast({ title: "✓ Bill Generated!", description: `${(bill as any).billNumber} — ₹${finalAmount.toLocaleString("en-IN")}` });
           setCart([]); setCustomerId(""); setCustomerName("Walk-in Customer"); setCustomerPhone("");
           setCustomerDob(""); setCustomerAnniversary(""); setGlobalDiscountAmt(0); setCustomerMembership(null);
+          setPosFamilyToAdd([]); setShowPosFamilySection(false);
         },
         onError: () => toast({ title: "Failed to generate bill", variant: "destructive" }),
       });
@@ -744,6 +792,73 @@ export default function POS() {
           )}
         </div>
 
+        {/* Family members section — appears when buying a membership for a registered customer */}
+        {cart.some(i => i.type === "membership") && customerId && (
+          <div className="mx-3 mb-2 rounded-2xl bg-sidebar-accent overflow-hidden">
+            <button
+              className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-semibold text-white"
+              onClick={() => setShowPosFamilySection(v => !v)}>
+              <span className="flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-amber-300" />
+                Add Family Members to this Membership
+              </span>
+              <span className="text-white/50 text-[10px]">
+                {showPosFamilySection ? "▲" : "▼"}
+                {posFamilyToAdd.filter(m => m.name.trim()).length > 0 && (
+                  <span className="ml-1 bg-amber-400/30 text-amber-200 px-1.5 py-0.5 rounded-full">
+                    {posFamilyToAdd.filter(m => m.name.trim()).length}
+                  </span>
+                )}
+              </span>
+            </button>
+            {showPosFamilySection && (
+              <div className="px-3 pb-3 space-y-2 border-t border-sidebar-border/50">
+                <p className="text-[10px] text-white/50 pt-2">These members will be added to {customerName}'s family (max 4)</p>
+                {posFamilyToAdd.map((m, idx) => (
+                  <div key={idx} className="rounded-xl bg-sidebar p-2 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-semibold text-white/70">Member {idx + 1}</span>
+                      <button onClick={() => setPosFamilyToAdd(prev => prev.filter((_, i) => i !== idx))}
+                        className="text-white/40 hover:text-red-400 transition-colors">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1">
+                      <input placeholder="Full name *" value={m.name}
+                        onChange={e => setPosFamilyToAdd(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
+                        className="col-span-2 w-full text-xs rounded-lg px-2 py-1.5 bg-sidebar-accent text-white placeholder:text-white/30 border-0 focus:outline-none" />
+                      <input placeholder="Phone" value={m.phone} maxLength={10}
+                        onChange={e => setPosFamilyToAdd(prev => prev.map((x, i) => i === idx ? { ...x, phone: e.target.value.replace(/\D/g, "") } : x))}
+                        className="w-full text-xs rounded-lg px-2 py-1.5 bg-sidebar-accent text-white placeholder:text-white/30 border-0 focus:outline-none" />
+                      <select value={m.gender}
+                        onChange={e => setPosFamilyToAdd(prev => prev.map((x, i) => i === idx ? { ...x, gender: e.target.value } : x))}
+                        className="w-full text-xs rounded-lg px-2 py-1.5 bg-sidebar-accent text-white border-0 focus:outline-none">
+                        <option value="">Gender</option>
+                        <option value="Female">Female</option>
+                        <option value="Male">Male</option>
+                        <option value="Other">Other</option>
+                      </select>
+                      <input type="date" placeholder="Birthday" value={m.dob}
+                        onChange={e => setPosFamilyToAdd(prev => prev.map((x, i) => i === idx ? { ...x, dob: e.target.value } : x))}
+                        className="w-full text-xs rounded-lg px-2 py-1.5 bg-sidebar-accent text-white border-0 focus:outline-none" />
+                      <input type="date" placeholder="Anniversary" value={m.anniversary}
+                        onChange={e => setPosFamilyToAdd(prev => prev.map((x, i) => i === idx ? { ...x, anniversary: e.target.value } : x))}
+                        className="w-full text-xs rounded-lg px-2 py-1.5 bg-sidebar-accent text-white border-0 focus:outline-none" />
+                    </div>
+                  </div>
+                ))}
+                {posFamilyToAdd.length < 4 && (
+                  <button
+                    onClick={() => setPosFamilyToAdd(prev => [...prev, { ...EMPTY_POS_ADD }])}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-white/20 text-xs font-semibold text-white/60 hover:text-white hover:border-white/40 transition-colors">
+                    <Plus className="w-3 h-3" /> Add Member
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Bill summary */}
         <div className="shrink-0 border-t border-sidebar-border">
           <div className="px-4 pt-4 pb-2 space-y-2.5">
@@ -835,10 +950,10 @@ export default function POS() {
           </div>
 
           <div className="px-4 pb-5">
-            <button onClick={handleGenerateBill} disabled={cart.length === 0 || createBill.isPending}
-              className={`w-full py-4 rounded-2xl font-bold text-base transition-all text-white ${cart.length > 0 ? "rose-gold-gradient" : "bg-sidebar-accent opacity-40 cursor-not-allowed"}`}
-              style={cart.length > 0 ? { boxShadow: "0 4px 20px hsl(15 40% 60% / 0.45)" } : {}}>
-              {createBill.isPending ? "Processing..." : cart.length === 0 ? "Add items to generate bill" : editBillId ? `Update Invoice — ₹${finalAmount.toLocaleString("en-IN")}` : `Generate Bill — ₹${finalAmount.toLocaleString("en-IN")}`}
+            <button onClick={handleGenerateBill} disabled={cart.length === 0 || createBill.isPending || isEditSubmitting}
+              className={`w-full py-4 rounded-2xl font-bold text-base transition-all text-white ${cart.length > 0 && !isEditSubmitting ? "rose-gold-gradient" : "bg-sidebar-accent opacity-40 cursor-not-allowed"}`}
+              style={cart.length > 0 && !isEditSubmitting ? { boxShadow: "0 4px 20px hsl(15 40% 60% / 0.45)" } : {}}>
+              {(createBill.isPending || isEditSubmitting) ? "Processing..." : cart.length === 0 ? "Add items to generate bill" : editBillId ? `Update Invoice — ₹${finalAmount.toLocaleString("en-IN")}` : `Generate Bill — ₹${finalAmount.toLocaleString("en-IN")}`}
             </button>
           </div>
         </div>
