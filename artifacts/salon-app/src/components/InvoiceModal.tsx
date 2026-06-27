@@ -22,6 +22,7 @@ interface BillItem {
   quantity: number;
   discount: number;
   total: number;
+  durationMonths?: number;
 }
 
 interface Bill {
@@ -188,17 +189,20 @@ export function InvoiceModal({ bill, onClose }: InvoiceModalProps) {
                       {item.staffName && (
                         <div style={{ fontSize: 11, color: "#888", marginTop: 3 }}>by {item.staffName}</div>
                       )}
+                      {item.type === "membership" && item.durationMonths && (
+                        <div style={{ fontSize: 11, color: "#7c3aed", marginTop: 3 }}>Valid for {item.durationMonths} month{item.durationMonths !== 1 ? "s" : ""}</div>
+                      )}
                     </td>
                     <td style={{ padding: "12px 12px", fontFamily: f }}>
                       <span style={{
                         display: "inline-block",
                         fontSize: 10, fontWeight: 600,
-                        color: item.type === "service" ? "#555" : "#333",
-                        background: item.type === "service" ? "#f5f5f5" : "#ebebeb",
+                        color: item.type === "service" ? "#555" : item.type === "membership" ? "#7c3aed" : "#333",
+                        background: item.type === "service" ? "#f5f5f5" : item.type === "membership" ? "#ede9fe" : "#ebebeb",
                         borderRadius: 4, padding: "2px 8px",
                         textTransform: "capitalize", letterSpacing: 0.5,
                       }}>
-                        {item.type === "service" ? "Service" : "Product"}
+                        {item.type === "service" ? "Service" : item.type === "membership" ? "Membership" : "Product"}
                       </span>
                     </td>
                     <td style={{ padding: "12px 12px", textAlign: "center", fontSize: 13, fontFamily: f }}>{item.quantity}</td>
@@ -254,6 +258,25 @@ export function InvoiceModal({ bill, onClose }: InvoiceModalProps) {
                 <span>₹{Number(bill.finalAmount).toLocaleString("en-IN")}</span>
               </div>
             </div>
+
+            {/* ── MEMBERSHIP BENEFITS (if a membership was purchased) ── */}
+            {bill.items.some(i => i.type === "membership") && (
+              <div style={{ marginTop: 20, background: "#f5f3ff", border: "1.5px solid #c4b5fd", borderRadius: 8, padding: "12px 16px" }}>
+                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 2, color: "#7c3aed", fontWeight: 700, marginBottom: 8, fontFamily: f }}>Membership Benefits Activated</div>
+                {bill.items.filter(i => i.type === "membership").map((item, idx) => (
+                  <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: idx < bill.items.filter(i2 => i2.type === "membership").length - 1 ? 8 : 0 }}>
+                    <span style={{ fontSize: 16 }}>👑</span>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#5b21b6", fontFamily: f }}>{item.name}</div>
+                      {item.durationMonths && (
+                        <div style={{ fontSize: 11, color: "#7c3aed", fontFamily: f }}>Valid for {item.durationMonths} month{item.durationMonths !== 1 ? "s" : ""} from today</div>
+                      )}
+                      <div style={{ fontSize: 11, color: "#6d28d9", marginTop: 2, fontFamily: f }}>Services discounts apply on all future visits. Family members can be added to this plan.</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* ── PAYMENT ── */}
             <div style={{ marginTop: 24, display: "flex", alignItems: "center", gap: 10 }}>

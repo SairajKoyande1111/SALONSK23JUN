@@ -74,6 +74,8 @@ export default function POS() {
   const [membershipPlans, setMembershipPlans] = useState<any[]>([]);
   const [typePicker, setTypePicker]       = useState<any | null>(null);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const isEditLoading = useRef(false);
+  const editBillIdRef = useRef(editBillId);
   type POSFamilyAdd = { name: string; phone: string; gender: string; dob: string; anniversary: string };
   const EMPTY_POS_ADD: POSFamilyAdd = { name: "", phone: "", gender: "", dob: "", anniversary: "" };
   const [posFamilyToAdd, setPosFamilyToAdd] = useState<POSFamilyAdd[]>([]);
@@ -112,8 +114,13 @@ export default function POS() {
     return { autoDiscountPct: 0, specialLabel: null, membershipLabel: null };
   }, [customerDob, customerAnniversary, customerMembership, cartMembershipDiscount, todayMMDD]);
 
+  // Keep editBillIdRef in sync so handleGenerateBill always sees the latest value
+  useEffect(() => { editBillIdRef.current = editBillId; }, [editBillId]);
+
   // Retroactively apply discount to all service items already in cart when customer/discount changes
+  // Skip during edit-bill loading so we don't overwrite the restored item discounts
   useEffect(() => {
+    if (isEditLoading.current) return;
     setCart(prev => prev.map(item => {
       if (item.type !== "service") return item;
       return { ...item, discountAmt: Math.round(item.price * autoDiscountPct / 100) };
@@ -136,12 +143,15 @@ export default function POS() {
   // Load existing bill when in edit mode
   useEffect(() => {
     if (!editBillId) return;
+    isEditLoading.current = true;
     fetch(`${API_BASE}/bills/${editBillId}`)
       .then(r => r.json())
       .then((bill: any) => {
         setCustomerId(bill.customerId || "");
         setCustomerName(bill.customerName || "Walk-in Customer");
         setCustomerPhone(bill.customerPhone || "");
+        setCustomerDob(bill.customerDob || "");
+        setCustomerAnniversary(bill.customerAnniversary || "");
         setPaymentMethod(bill.paymentMethod || "upi");
         setTaxEnabled((bill.taxPercent || 0) > 0);
         setTaxRate(bill.taxPercent || 18);
@@ -159,9 +169,21 @@ export default function POS() {
           durationMonths: item.durationMonths,
         }));
         setCart(restoredCart);
-        if (bill.customerId) fetchMembership(bill.customerId);
+        // Load membership for display (badge) only — do NOT re-apply discount to loaded items
+        if (bill.customerId) {
+          fetch(`${API_BASE}/customer-memberships/customer/${bill.customerId}`)
+            .then(r => r.json())
+            .then(d => {
+              setCustomerMembership(d.membership || null);
+              // Now safe to unblock the discount effect (cart already has its original discounts)
+              isEditLoading.current = false;
+            })
+            .catch(() => { isEditLoading.current = false; });
+        } else {
+          isEditLoading.current = false;
+        }
       })
-      .catch(() => {});
+      .catch(() => { isEditLoading.current = false; });
   }, [editBillId]);
 
   const categories = useMemo(() => {
@@ -367,6 +389,8 @@ export default function POS() {
   const handleGenerateBill = async () => {
     if (cart.length === 0) { toast({ title: "Cart is empty", description: "Add at least one item.", variant: "destructive" }); return; }
 
+    const currentEditBillId = editBillIdRef.current;
+
     const billData = {
       customerId: customerId || null, customerName: customerName || "Walk-in Customer", customerPhone: customerPhone || "",
       items: cart.map(i => ({ type: i.type, itemId: i.itemId, name: i.name, staffId: i.staffId || null, staffName: i.staffName || null, price: i.price, quantity: i.quantity, discount: i.discountAmt, total: getItemTotal(i), durationMonths: i.durationMonths })),
@@ -385,11 +409,11 @@ export default function POS() {
       }
     };
 
-    if (editBillId) {
+    if (currentEditBillId) {
       // Edit mode: PUT to update existing bill
       setIsEditSubmitting(true);
       try {
-        const res = await fetch(`${API_BASE}/bills/${editBillId}`, {
+        const res = await fetch(`${API_BASE}/bills/${currentEditBillId}`, {
           method: "PUT", headers: { "Content-Type": "application/json" },
           body: JSON.stringify(billData),
         });
@@ -950,11 +974,23 @@ export default function POS() {
           </div>
 
           <div className="px-4 pb-5">
-            <button onClick={handleGenerateBill} disabled={cart.length === 0 || createBill.isPending || isEditSubmitting}
-              className={`w-full py-4 rounded-2xl font-bold text-base transition-all text-white ${cart.length > 0 && !isEditSubmitting ? "rose-gold-gradient" : "bg-sidebar-accent opacity-40 cursor-not-allowed"}`}
-              style={cart.length > 0 && !isEditSubmitting ? { boxShadow: "0 4px 20px hsl(15 40% 60% / 0.45)" } : {}}>
-              {(createBill.isPending || isEditSubmitting) ? "Processing..." : cart.length === 0 ? "Add items to generate bill" : editBillId ? `Update Invoice — ₹${finalAmount.toLocaleString("en-IN")}` : `Generate Bill — ₹${finalAmount.toLocaleString("en-IN")}`}
-            </button>
+            {(() => {
+              const isDisabled = cart.length === 0 || createBill.isPending || isEditSubmitting;
+              const isActive = !isDisabled;
+              return (
+                <button onClick={handleGenerateBill} disabled={isDisabled}
+                  className={`w-full py-4 rounded-2xl font-bold text-base transition-all text-white ${isActive ? "rose-gold-gradient" : "bg-sidebar-accent opacity-40 cursor-not-allowed"}`}
+                  style={isActive ? { boxShadow: "0 4px 20px hsl(15 40% 60% / 0.45)" } : {}}>
+                  {(createBill.isPending || isEditSubmitting)
+                    ? "Processing..."
+                    : cart.length === 0
+                    ? "Add items to generate bill"
+                    : editBillId
+                    ? `Update Invoice — ₹${finalAmount.toLocaleString("en-IN")}`
+                    : `Generate Bill — ₹${finalAmount.toLocaleString("en-IN")}`}
+                </button>
+              );
+            })()}
           </div>
         </div>
       </div>
