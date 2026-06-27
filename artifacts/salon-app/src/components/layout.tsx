@@ -15,7 +15,7 @@ const MODULE_NAMES: Record<string, string> = {
   "/products":       "Products",
   "/staff":          "Staff",
   "/memberships":    "Memberships",
-  "/upgradations":   "Upgradations",
+  "/upgradations":   "Staff Reports",
   "/reports":        "Reports",
 };
 
