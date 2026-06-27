@@ -9,6 +9,7 @@ import billsRouter from "./bills.js";
 import membershipsRouter from "./memberships.js";
 import dashboardRouter from "./dashboard.js";
 import reportsRouter from "./reports.js";
+import upgradationRouter from "./upgradation.js";
 
 const router: IRouter = Router();
 
@@ -18,6 +19,8 @@ router.use(staffRouter);
 router.use(servicesRouter);
 router.use(productsRouter);
 router.use(appointmentsRouter);
+// upgradation report MUST be registered before billsRouter to avoid /:billId collision
+router.use(upgradationRouter);
 router.use(billsRouter);
 router.use(membershipsRouter);
 router.use(dashboardRouter);

@@ -43,7 +43,7 @@ export default function Upgradations() {
       if (fromDate) params.set("from", fromDate);
       if (toDate) params.set("to", toDate);
       const q = params.toString() ? `?${params.toString()}` : "";
-      const res = await fetch(`${API_BASE}/bills/upgradation-report${q}`);
+      const res = await fetch(`${API_BASE}/upgradation-report${q}`);
       const data = await res.json();
       setReport(data.report || []);
     } catch {
