@@ -5,17 +5,18 @@ import { useAuth } from "@/contexts/auth";
 import { PinModal } from "./PinModal";
 
 const MODULE_NAMES: Record<string, string> = {
-  "/":             "Dashboard",
-  "/dashboard":    "Dashboard",
-  "/pos":          "POS / New Bill",
-  "/appointments": "Appointments",
-  "/customers":    "Customers",
-  "/invoices":     "Invoices",
-  "/services":     "Services",
-  "/products":     "Products",
-  "/staff":        "Staff",
-  "/memberships":  "Memberships",
-  "/reports":      "Reports",
+  "/":               "Dashboard",
+  "/dashboard":      "Dashboard",
+  "/pos":            "POS / New Bill",
+  "/appointments":   "Appointments",
+  "/customers":      "Customers",
+  "/invoices":       "Invoices",
+  "/services":       "Services",
+  "/products":       "Products",
+  "/staff":          "Staff",
+  "/memberships":    "Memberships",
+  "/upgradations":   "Upgradations",
+  "/reports":        "Reports",
 };
 
 export function Layout({ children }: { children: ReactNode }) {

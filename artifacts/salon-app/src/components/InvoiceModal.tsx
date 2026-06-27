@@ -23,6 +23,7 @@ interface BillItem {
   discount: number;
   total: number;
   durationMonths?: number;
+  isUpgradation?: boolean;
 }
 
 interface Bill {
@@ -185,7 +186,14 @@ export function InvoiceModal({ bill, onClose }: InvoiceModalProps) {
                   <tr key={i} style={{ borderBottom: "1px solid #f0f0f0" }}>
                     <td style={{ padding: "12px 12px", fontSize: 12, color: "#999", fontFamily: f }}>{i + 1}</td>
                     <td style={{ padding: "12px 12px", fontFamily: f }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#111" }}>{item.name}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#111" }}>{item.name}</span>
+                        {item.isUpgradation && (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 700, color: "#b45309", background: "#fef3c7", border: "1px solid #fbbf24", borderRadius: 4, padding: "2px 6px", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                            ↑ Upgradation
+                          </span>
+                        )}
+                      </div>
                       {item.staffName && (
                         <div style={{ fontSize: 11, color: "#888", marginTop: 3 }}>by {item.staffName}</div>
                       )}

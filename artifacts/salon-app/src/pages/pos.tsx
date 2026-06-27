@@ -3,7 +3,7 @@ import { useListServices, useListProducts, useListCustomers, useListStaff, useCr
 import {
   Search, Trash2, Receipt, CreditCard, Banknote, Smartphone,
   ChevronLeft, Wallet, UserPlus, X, Scissors, Package, Clock,
-  ChevronDown, UserCircle2, Tag, Check, BadgeCheck, Users, Plus, Crown
+  ChevronDown, UserCircle2, Tag, Check, BadgeCheck, Users, Plus, Crown, TrendingUp
 } from "lucide-react";
 import { Link, useSearch, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -22,6 +22,7 @@ type CartItem = {
   staffId?: string | null;
   staffName?: string;
   durationMonths?: number;
+  isUpgradation?: boolean;
 };
 
 const PAYMENT_METHODS = [
@@ -167,6 +168,7 @@ export default function POS() {
           staffId: item.staffId || null,
           staffName: item.staffName || "",
           durationMonths: item.durationMonths,
+          isUpgradation: item.isUpgradation || false,
         }));
         setCart(restoredCart);
         // Load membership for display (badge) only — do NOT re-apply discount to loaded items
@@ -393,7 +395,7 @@ export default function POS() {
 
     const billData = {
       customerId: customerId || null, customerName: customerName || "Walk-in Customer", customerPhone: customerPhone || "",
-      items: cart.map(i => ({ type: i.type, itemId: i.itemId, name: i.name, staffId: i.staffId || null, staffName: i.staffName || null, price: i.price, quantity: i.quantity, discount: i.discountAmt, total: getItemTotal(i), durationMonths: i.durationMonths })),
+      items: cart.map(i => ({ type: i.type, itemId: i.itemId, name: i.name, staffId: i.staffId || null, staffName: i.staffName || null, price: i.price, quantity: i.quantity, discount: i.discountAmt, total: getItemTotal(i), durationMonths: i.durationMonths, isUpgradation: i.isUpgradation || false })),
       subtotal, taxPercent, taxAmount, paymentMethod, discountAmount: globalDiscountAmount, finalAmount, status: "paid",
       notes: [specialLabel || membershipLabel, selectedMemberParentName ? `Family of ${selectedMemberParentName}` : ""].filter(Boolean).join(" · "),
     };
@@ -761,14 +763,24 @@ export default function POS() {
           ) : (
             cart.map((item, idx) => {
               const lineTotal = getItemTotal(item);
+              const isUpg = !!item.isUpgradation;
               return (
-                <div key={item.uid} className="rounded-2xl overflow-hidden bg-sidebar-accent">
+                <div key={item.uid}
+                  className="rounded-2xl overflow-hidden"
+                  style={{ background: isUpg ? "linear-gradient(135deg, #78350f22 0%, #92400e33 100%)" : "hsl(var(--sidebar-accent))", border: isUpg ? "1.5px solid #f59e0b55" : "1.5px solid transparent" }}>
                   <div className="flex items-start gap-2.5 px-3 pt-3 pb-2">
                     <div className="w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5 bg-sidebar text-white">
                       {idx + 1}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm leading-tight text-white">{item.name}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="font-bold text-sm leading-tight text-white">{item.name}</p>
+                        {isUpg && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            <TrendingUp className="w-2.5 h-2.5" /> Upgradation
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[10px] font-medium mt-0.5 capitalize text-white/60">{item.type}</p>
                     </div>
                     <p className="font-extrabold text-sm shrink-0 text-white">₹{lineTotal.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</p>
@@ -785,6 +797,22 @@ export default function POS() {
                         <option value="">Assign staff</option>
                         {staff.map((s: any) => <option key={s.id || s._id} value={s.id || s._id}>{s.name}</option>)}
                       </select>
+                    )}
+                    {item.type === "product" && (
+                      <select value={item.staffId || ""} onChange={e => updateCartItem(item.uid, "staffId", e.target.value)}
+                        className="flex-1 min-w-0 text-xs rounded-lg px-2 py-1.5 focus:outline-none border-0 bg-sidebar text-white">
+                        <option value="">Sold by (staff)</option>
+                        {staff.map((s: any) => <option key={s.id || s._id} value={s.id || s._id}>{s.name}</option>)}
+                      </select>
+                    )}
+                    {/* Upgradation toggle — appears on any non-membership item */}
+                    {item.type !== "membership" && (
+                      <button
+                        onClick={() => updateCartItem(item.uid, "isUpgradation", !isUpg)}
+                        title={isUpg ? "Remove Upgradation tag" : "Mark as Upgradation (upsell)"}
+                        className={`w-7 h-7 shrink-0 flex items-center justify-center rounded-lg transition-colors ${isUpg ? "bg-amber-500/30 text-amber-300" : "bg-sidebar text-white/40 hover:text-amber-300 hover:bg-amber-500/20"}`}>
+                        <TrendingUp className="w-3.5 h-3.5" />
+                      </button>
                     )}
                     <div className="flex items-center rounded-lg overflow-hidden shrink-0 bg-sidebar">
                       <button className="w-7 h-7 flex items-center justify-center font-bold transition-colors hover:opacity-70 text-white"

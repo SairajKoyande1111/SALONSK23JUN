@@ -20,6 +20,7 @@ import Products from "@/pages/products";
 import Memberships from "@/pages/memberships";
 import Reports from "@/pages/reports";
 import Invoices from "@/pages/invoices";
+import Upgradations from "@/pages/upgradations";
 import Settings from "@/pages/settings";
 
 const queryClient = new QueryClient();
@@ -41,6 +42,7 @@ function Router() {
         <Route path="/memberships" component={Memberships} />
         <Route path="/reports" component={Reports} />
         <Route path="/invoices" component={Invoices} />
+        <Route path="/upgradations" component={Upgradations} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>

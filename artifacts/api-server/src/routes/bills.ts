@@ -30,6 +30,56 @@ async function generateBillNumber(): Promise<string> {
   return `${prefix}${String(nextSeq).padStart(2, "0")}`;
 }
 
+// Upgradation performance report — per-staff breakdown of upsold items
+router.get("/bills/upgradation-report", async (req, res) => {
+  const { from, to } = req.query as Record<string, string>;
+  const matchStage: Record<string, any> = { "items.isUpgradation": true };
+  if (from || to) {
+    matchStage.createdAt = {};
+    if (from) matchStage.createdAt.$gte = new Date(from);
+    if (to) {
+      const toDate = new Date(to);
+      toDate.setHours(23, 59, 59, 999);
+      matchStage.createdAt.$lte = toDate;
+    }
+  }
+
+  const results = await Bill.aggregate([
+    { $match: from || to ? (matchStage.createdAt ? { createdAt: matchStage.createdAt } : {}) : {} },
+    { $unwind: "$items" },
+    { $match: { "items.isUpgradation": true } },
+    {
+      $group: {
+        _id: { staffId: "$items.staffId", staffName: "$items.staffName" },
+        totalCount: { $sum: 1 },
+        totalRevenue: { $sum: "$items.total" },
+        items: {
+          $push: {
+            name: "$items.name",
+            type: "$items.type",
+            price: "$items.price",
+            total: "$items.total",
+            billNumber: "$billNumber",
+            customerName: "$customerName",
+            date: "$createdAt",
+          },
+        },
+      },
+    },
+    { $sort: { totalRevenue: -1 } },
+  ]);
+
+  const report = results.map((r) => ({
+    staffId: r._id.staffId || null,
+    staffName: r._id.staffName || "Unassigned",
+    totalCount: r.totalCount,
+    totalRevenue: r.totalRevenue,
+    items: r.items,
+  }));
+
+  res.json({ report });
+});
+
 router.get("/bills", async (req, res) => {
   const { customerId, from, to, paymentMethod } = req.query as Record<string, string>;
   const query: Record<string, any> = {};

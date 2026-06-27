@@ -229,6 +229,7 @@ export interface IBillItem {
   quantity: number;
   discount: number;
   total: number;
+  isUpgradation?: boolean;
 }
 
 export interface IBill extends Document {
@@ -259,6 +260,7 @@ const BillItemSchema = new Schema<IBillItem>(
     quantity: Number,
     discount: Number,
     total: Number,
+    isUpgradation: { type: Boolean, default: false },
   },
   { _id: false }
 );

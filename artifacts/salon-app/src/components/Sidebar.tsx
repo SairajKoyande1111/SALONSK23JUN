@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   ChevronLeft,
   ChevronRight,
+  TrendingUp,
 } from "lucide-react";
 import clsx from "clsx";
 import { useState } from "react";
@@ -32,6 +33,7 @@ const ALL_NAV_ITEMS = [
   { icon: Package,         label: "Products",       href: "/products" },
   { icon: Briefcase,       label: "Staff",          href: "/staff" },
   { icon: Tag,             label: "Memberships",    href: "/memberships" },
+  { icon: TrendingUp,      label: "Upgradations",   href: "/upgradations" },
   { icon: BarChart3,       label: "Reports",        href: "/reports" },
 ];
 
