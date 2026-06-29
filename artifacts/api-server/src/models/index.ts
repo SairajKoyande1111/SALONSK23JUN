@@ -62,6 +62,7 @@ export interface IStaff extends Document {
   specialization: string;
   commissionPercent: number;
   phone?: string;
+  gender?: string;
   avatarInitials: string;
 }
 
@@ -70,6 +71,7 @@ const StaffSchema = new Schema<IStaff>({
   specialization: { type: String, required: true },
   commissionPercent: { type: Number, default: 10 },
   phone: String,
+  gender: { type: String, enum: ["male", "female", ""], default: "" },
   avatarInitials: String,
 });
 

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useListServices, useCreateService } from "@workspace/api-client-react";
-import { Plus, IndianRupee, X, Search, ChevronDown, Tag, Upload, Download, Users, Pencil, Trash2 } from "lucide-react";
+import { Plus, IndianRupee, X, Search, ChevronDown, Tag, Upload, Download, Users, Pencil, Trash2, Star } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 
@@ -282,6 +282,11 @@ export default function Services() {
   const [searchFilter, setSearchFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [openCards, setOpenCards] = useState<Record<string, boolean>>({});
+  const [stylistStats, setStylistStats] = useState<Record<string, { staffId: string; staffName: string; count: number }>>({});
+
+  useEffect(() => {
+    fetch("/api/service-stylist-stats").then(r => r.json()).then(d => setStylistStats(d.stats || {})).catch(() => {});
+  }, []);
 
   const allCategories: string[] = data?.categories || [];
   const displayCategories = ["All", ...allCategories];
@@ -540,7 +545,21 @@ export default function Services() {
                   </span>
                 </div>
 
-                <h3 className="font-bold text-base text-foreground group-hover:text-primary transition-colors leading-tight pr-14 mb-3">{s.name}</h3>
+                <h3 className="font-bold text-base text-foreground group-hover:text-primary transition-colors leading-tight pr-14 mb-2">{s.name}</h3>
+
+                {(() => {
+                  const topStylist = stylistStats[s.name];
+                  if (!topStylist?.staffName) return null;
+                  return (
+                    <div className="flex items-center gap-1.5 mb-3">
+                      <Star className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />
+                      <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 truncate">
+                        {topStylist.staffName}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/60 shrink-0">· {topStylist.count}×</span>
+                    </div>
+                  );
+                })()}
 
                 {variants.length > 0 ? (
                   <div>

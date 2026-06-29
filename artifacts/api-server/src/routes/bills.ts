@@ -30,6 +30,32 @@ async function generateBillNumber(): Promise<string> {
   return `${prefix}${String(nextSeq).padStart(2, "0")}`;
 }
 
+// GET /api/service-stylist-stats — top stylist per service based on bill history
+router.get("/service-stylist-stats", async (_req, res) => {
+  const bills = await Bill.find({ "items.staffId": { $exists: true, $ne: null } });
+  const stats: Record<string, Record<string, { staffName: string; count: number }>> = {};
+  for (const bill of bills) {
+    for (const item of (bill as any).items) {
+      if (item.type !== "service" || !item.staffId || !item.name) continue;
+      const svcName = item.name as string;
+      const staffId = item.staffId.toString();
+      const staffName = (item.staffName as string) || "";
+      if (!stats[svcName]) stats[svcName] = {};
+      if (!stats[svcName][staffId]) stats[svcName][staffId] = { staffName, count: 0 };
+      stats[svcName][staffId].count++;
+    }
+  }
+  const result: Record<string, { staffId: string; staffName: string; count: number }> = {};
+  for (const [svcName, staffMap] of Object.entries(stats)) {
+    let topStaffId = "", topStaffName = "", topCount = 0;
+    for (const [staffId, { staffName, count }] of Object.entries(staffMap)) {
+      if (count > topCount) { topCount = count; topStaffId = staffId; topStaffName = staffName; }
+    }
+    result[svcName] = { staffId: topStaffId, staffName: topStaffName, count: topCount };
+  }
+  res.json({ stats: result });
+});
+
 router.get("/bills", async (req, res) => {
   const { customerId, from, to, paymentMethod } = req.query as Record<string, string>;
   const query: Record<string, any> = {};

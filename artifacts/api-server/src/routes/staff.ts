@@ -9,7 +9,7 @@ router.get("/staff", async (_req, res) => {
 });
 
 router.post("/staff", async (req, res) => {
-  const { name, specialization, commissionPercent, phone } = req.body;
+  const { name, specialization, commissionPercent, phone, gender } = req.body;
   const avatarInitials = name
     .split(" ")
     .map((w: string) => w[0])
@@ -21,6 +21,7 @@ router.post("/staff", async (req, res) => {
     specialization,
     commissionPercent: commissionPercent ?? 10,
     phone,
+    gender: gender || "",
     avatarInitials,
   });
   res.status(201).json({ ...member.toObject(), id: member._id.toString() });
@@ -28,7 +29,7 @@ router.post("/staff", async (req, res) => {
 
 router.put("/staff/:staffId", async (req, res) => {
   const { staffId } = req.params;
-  const { name, specialization, commissionPercent, phone } = req.body;
+  const { name, specialization, commissionPercent, phone, gender } = req.body;
   const member = await Staff.findById(staffId);
   if (!member) return res.status(404).json({ error: "Staff member not found" });
   const avatarInitials = (name || member.name)
@@ -41,7 +42,9 @@ router.put("/staff/:staffId", async (req, res) => {
     staffId,
     { name: name || member.name, specialization: specialization || member.specialization,
       commissionPercent: commissionPercent ?? member.commissionPercent,
-      phone: phone !== undefined ? phone : member.phone, avatarInitials },
+      phone: phone !== undefined ? phone : member.phone,
+      gender: gender !== undefined ? gender : (member.gender || ""),
+      avatarInitials },
     { new: true }
   );
   res.json({ ...updated!.toObject(), id: updated!._id.toString() });

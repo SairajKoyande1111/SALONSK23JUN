@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 
 const poppins = { fontFamily: "'Poppins', sans-serif" };
 
-const EMPTY_FORM = { name: "", specialization: "Hair Stylist", commissionPercent: 10, phone: "" };
+const EMPTY_FORM = { name: "", specialization: "Hair Stylist", phone: "", gender: "" };
 
 export default function Staff() {
   const { data, isLoading, refetch } = useListStaff();
@@ -17,7 +17,7 @@ export default function Staff() {
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
 
   const [editStaff, setEditStaff] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ name: "", specialization: "", commissionPercent: 10, phone: "" });
+  const [editForm, setEditForm] = useState({ name: "", specialization: "", phone: "", gender: "" });
   const [saving, setSaving] = useState(false);
 
   const [deleteStaff, setDeleteStaff] = useState<any>(null);
@@ -40,8 +40,8 @@ export default function Staff() {
     setEditForm({
       name: s.name || "",
       specialization: s.specialization || "",
-      commissionPercent: s.commissionPercent ?? 10,
       phone: s.phone || "",
+      gender: s.gender || "",
     });
   };
 
@@ -182,6 +182,18 @@ export default function Staff() {
                   onChange={e => setFormData({ ...formData, specialization: e.target.value })} />
               </div>
               <div>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">Gender</label>
+                <div className="flex gap-3">
+                  {[{ label: "♂ Male", value: "male" }, { label: "♀ Female", value: "female" }].map(g => (
+                    <button key={g.value} type="button"
+                      onClick={() => setFormData({ ...formData, gender: formData.gender === g.value ? "" : g.value })}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${formData.gender === g.value ? "bg-primary text-white border-primary" : "border-border text-muted-foreground hover:border-primary/40"}`}>
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
                 <label className="block text-sm font-medium mb-1 text-muted-foreground">Phone</label>
                 <input placeholder="10-digit mobile number"
                   className="w-full p-3 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none"
@@ -227,18 +239,23 @@ export default function Staff() {
                   onChange={e => setEditForm({ ...editForm, specialization: e.target.value })} />
               </div>
               <div>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">Gender</label>
+                <div className="flex gap-3">
+                  {[{ label: "♂ Male", value: "male" }, { label: "♀ Female", value: "female" }].map(g => (
+                    <button key={g.value} type="button"
+                      onClick={() => setEditForm({ ...editForm, gender: editForm.gender === g.value ? "" : g.value })}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${editForm.gender === g.value ? "bg-primary text-white border-primary" : "border-border text-muted-foreground hover:border-primary/40"}`}>
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
                 <label className="block text-sm font-medium mb-1 text-muted-foreground">Phone</label>
                 <input placeholder="10-digit mobile number"
                   className="w-full p-3 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none"
                   value={editForm.phone}
                   onChange={e => setEditForm({ ...editForm, phone: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1 text-muted-foreground">Commission %</label>
-                <input type="number" min="0" max="100" placeholder="e.g. 10"
-                  className="w-full p-3 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none"
-                  value={editForm.commissionPercent}
-                  onChange={e => setEditForm({ ...editForm, commissionPercent: Number(e.target.value) })} />
               </div>
               <div className="flex gap-3 mt-8">
                 <button type="button" onClick={() => setEditStaff(null)}

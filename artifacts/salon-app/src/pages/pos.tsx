@@ -46,6 +46,8 @@ export default function POS() {
   const editBillId = useMemo(() => new URLSearchParams(search2).get("editBill") || "", [search2]);
   const [, navigate] = useLocation();
 
+  const [stylistStats, setStylistStats] = useState<Record<string, { staffId: string; staffName: string; count: number }>>({});
+
   const [activeTab, setActiveTab]           = useState<"services" | "products" | "memberships">("services");
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [search, setSearch]                 = useState("");
@@ -139,6 +141,10 @@ export default function POS() {
 
   useEffect(() => {
     fetch(`${API_BASE}/memberships`).then(r => r.json()).then(d => setMembershipPlans(d.memberships || [])).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/service-stylist-stats`).then(r => r.json()).then(d => setStylistStats(d.stats || {})).catch(() => {});
   }, []);
 
   // Load existing bill when in edit mode
@@ -236,11 +242,20 @@ export default function POS() {
     const name  = overrideName ?? item.name;
     const discountAmt = activeTab === "services" ? Math.round(price * autoDiscountPct / 100) : 0;
     const type = activeTab === "services" ? "service" : activeTab === "products" ? "product" : "membership";
+    let autoStaffId: string | null = null;
+    let autoStaffName = "";
+    if (type === "service") {
+      const topStylist = stylistStats[name];
+      if (topStylist?.staffId) {
+        autoStaffId = topStylist.staffId;
+        autoStaffName = topStylist.staffName;
+      }
+    }
     setCart(prev => [...prev, {
       uid: Math.random().toString(36).substr(2, 9),
       type,
       itemId: id, name, price, quantity: 1, discountAmt,
-      staffId: null, staffName: "",
+      staffId: autoStaffId, staffName: autoStaffName,
       durationMonths: activeTab === "memberships" ? (item.duration || item.durationMonths) : undefined,
     }]);
   };
@@ -795,14 +810,20 @@ export default function POS() {
                       <select value={item.staffId || ""} onChange={e => updateCartItem(item.uid, "staffId", e.target.value)}
                         className="flex-1 min-w-0 text-xs rounded-lg px-2 py-1.5 focus:outline-none border-0 bg-sidebar text-white">
                         <option value="">Assign staff</option>
-                        {staff.map((s: any) => <option key={s.id || s._id} value={s.id || s._id}>{s.name}</option>)}
+                        {staff.map((s: any) => {
+                          const genderIcon = s.gender === "male" ? "♂ " : s.gender === "female" ? "♀ " : "";
+                          return <option key={s.id || s._id} value={s.id || s._id}>{genderIcon}{s.name}</option>;
+                        })}
                       </select>
                     )}
                     {item.type === "product" && (
                       <select value={item.staffId || ""} onChange={e => updateCartItem(item.uid, "staffId", e.target.value)}
                         className="flex-1 min-w-0 text-xs rounded-lg px-2 py-1.5 focus:outline-none border-0 bg-sidebar text-white">
                         <option value="">Sold by (staff)</option>
-                        {staff.map((s: any) => <option key={s.id || s._id} value={s.id || s._id}>{s.name}</option>)}
+                        {staff.map((s: any) => {
+                          const genderIcon = s.gender === "male" ? "♂ " : s.gender === "female" ? "♀ " : "";
+                          return <option key={s.id || s._id} value={s.id || s._id}>{genderIcon}{s.name}</option>;
+                        })}
                       </select>
                     )}
                     {/* Upgradation toggle — appears on any non-membership item */}
