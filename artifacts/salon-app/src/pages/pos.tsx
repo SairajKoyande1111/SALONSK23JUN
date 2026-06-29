@@ -215,9 +215,15 @@ export default function POS() {
     fetch(`${API_BASE}/memberships`).then(r => r.json()).then(d => setMembershipPlans(d.memberships || [])).catch(() => {});
   }, []);
 
+  // Re-fetch whenever services data changes (covers HMR, navigation, and page reload)
+  const servicesLoadedKey = (servicesData as any)?.services?.length ?? -1;
   useEffect(() => {
-    fetch(`${API_BASE}/service-stylist-stats`).then(r => r.json()).then(d => setStylistStats(d.stats || {})).catch(() => {});
-  }, []);
+    if (servicesLoadedKey < 0) return;
+    fetch(`${API_BASE}/service-stylist-stats`, { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => setStylistStats(d.stats || {}))
+      .catch(() => {});
+  }, [servicesLoadedKey]);
 
   // Load existing bill when in edit mode
   useEffect(() => {
