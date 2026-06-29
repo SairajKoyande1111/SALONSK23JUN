@@ -323,7 +323,8 @@ export default function POS() {
     let autoStaffId: string | null = null;
     let autoStaffName = "";
     if (type === "service") {
-      const topStylist = stylistStats[name];
+      // Try full variant name first, then fall back to parent service name
+      const topStylist = stylistStats[name] || stylistStats[item.name];
       if (topStylist?.staffId) {
         autoStaffId = topStylist.staffId;
         autoStaffName = topStylist.staffName;
