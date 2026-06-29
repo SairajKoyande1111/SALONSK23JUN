@@ -722,7 +722,7 @@ export default function Reports() {
 
             {/* ── MEMBERSHIP ANALYTICS ─────────────────────── */}
             {(() => {
-              const ma = (data as any)?.membershipAnalytics || {};
+              const ma = (analytics as any)?.membershipAnalytics || {};
               const breakdown: any[] = ma.breakdown || [];
               const recent: any[] = ma.recent || [];
               const totalSold: number = ma.total || 0;
