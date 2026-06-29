@@ -222,8 +222,28 @@ export default function Dashboard() {
     return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
   }, [filteredAppts]);
 
-  // Today's follow-up reminders (customers who visited same date last month)
-  const todayFollowUps: any[] = followUpReminders[todayStr] || [];
+  // Follow-up reminders for the currently selected filter period
+  const periodFollowUps = useMemo(() => {
+    const entries = Object.entries(followUpReminders);
+    if (entries.length === 0) return [];
+
+    // Build set of dates visible in the current filter
+    let allowedDates: Set<string> | null = null;
+    if (apptFilter === "today") {
+      allowedDates = new Set([todayStr]);
+    } else if (apptFilter === "week") {
+      allowedDates = new Set(weekAppts.map((a: any) => a.appointmentDate));
+      allowedDates.add(todayStr); // always include today
+    }
+    // for "month" and "all" — allowedDates stays null → include everything
+
+    const result: Array<{ date: string; reminder: any }> = [];
+    for (const [date, reminders] of entries) {
+      if (allowedDates && !allowedDates.has(date)) continue;
+      for (const r of reminders) result.push({ date, reminder: r });
+    }
+    return result.sort((a, b) => a.date.localeCompare(b.date));
+  }, [apptFilter, followUpReminders, todayStr, weekAppts]);
 
   // Appointment status donut
   const statusDonutData = Object.entries(apptStatusBreakdown)
@@ -325,16 +345,17 @@ export default function Dashboard() {
               </a>
             </div>
 
-            {/* Follow-up reminder strip — shown only on Today tab */}
-            {apptFilter === "today" && todayFollowUps.length > 0 && (
+            {/* Follow-up reminder strip — shown for the active period */}
+            {periodFollowUps.length > 0 && (
               <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
                 <Bell className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-bold text-amber-800 mb-2">
-                    Follow-up Reminders — {todayFollowUps.length} customer{todayFollowUps.length !== 1 ? "s" : ""} visited on this date last month
+                    Follow-up Reminders — {periodFollowUps.length} customer{periodFollowUps.length !== 1 ? "s" : ""} visited on{" "}
+                    {apptFilter === "today" ? "this date" : apptFilter === "week" ? "these dates" : "dates in this period"} last month
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {todayFollowUps.map((r: any, i: number) => (
+                    {periodFollowUps.map(({ date, reminder: r }, i) => (
                       <div key={i}
                         className="flex items-center gap-2 bg-white rounded-lg px-3 py-1.5 border border-amber-200 text-xs shadow-sm">
                         <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
@@ -344,6 +365,9 @@ export default function Dashboard() {
                         </div>
                         <div className="min-w-0">
                           <p className="font-bold text-amber-900 truncate">{r.customerName}</p>
+                          {apptFilter !== "today" && (
+                            <p className="text-[9px] text-amber-500 font-semibold">{format(new Date(date + "T00:00:00"), "dd MMM")}</p>
+                          )}
                           {r.services?.length > 0 && (
                             <p className="text-[10px] text-amber-600 truncate">{r.services.join(", ")}</p>
                           )}
@@ -699,18 +723,18 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ── BOTTOM ROW: Today's Staff + Today's Services + Today's Payments ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {/* ── BOTTOM ROW: 2×2 grid — Staff / Services / Products / Payments ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
 
         {/* Today's Staff Performance */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <Users className="w-4 h-4 text-violet-500" /> Staff Performance — Today
+            <Users className="w-4 h-4 text-violet-500" /> Staff — Today
           </h3>
           {todayStaffList.length === 0 ? (
             <div className="py-8 text-center text-gray-400">
               <Users className="w-8 h-8 mx-auto opacity-20 mb-2" />
-              <p className="text-xs">No services billed today yet</p>
+              <p className="text-xs">No services billed today</p>
               <p className="text-[11px] opacity-60 mt-1">Assign staff when creating bills</p>
             </div>
           ) : (
@@ -726,7 +750,7 @@ export default function Dashboard() {
                         style={{ backgroundColor: col }}>
                         {st.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()}
                       </div>
-                      <div className="flex-1 flex justify-between items-center text-xs">
+                      <div className="flex-1 flex justify-between items-center text-xs min-w-0">
                         <span className="font-semibold text-gray-800 truncate">{st.name}</span>
                         <span className="shrink-0 ml-2 font-bold text-gray-900">{fmtRs(st.revenue)}</span>
                       </div>
@@ -734,7 +758,7 @@ export default function Dashboard() {
                     <div className="w-full bg-gray-100 rounded-full h-1.5 ml-11">
                       <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, backgroundColor: col }} />
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-0.5 ml-11">{st.services} service{st.services !== 1 ? "s" : ""} today</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5 ml-11">{st.services} service{st.services !== 1 ? "s" : ""}</p>
                   </div>
                 );
               })}
@@ -778,8 +802,13 @@ export default function Dashboard() {
               })}
             </div>
           )}
+        </div>
 
-          {/* Today's product sales mini */}
+        {/* Products Sold Today */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <Package className="w-4 h-4 text-emerald-500" /> Products Sold — Today
+          </h3>
           {(() => {
             const todayProds = (() => {
               const map: Record<string, { name: string; revenue: number; count: number }> = {};
@@ -795,21 +824,48 @@ export default function Dashboard() {
               }
               return Object.values(map).sort((a, b) => b.revenue - a.revenue);
             })();
-            if (todayProds.length === 0) return null;
-            return (
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1">
-                  <Package className="w-3 h-3" /> Products Sold Today
-                </p>
-                <div className="space-y-1.5">
-                  {todayProds.map((p, i) => (
-                    <div key={i} className="flex items-center justify-between text-xs">
-                      <span className="text-gray-600 truncate">{p.name}</span>
-                      <span className="text-gray-400 shrink-0 ml-2 font-medium">{p.count} × {fmtRs(p.revenue)}</span>
-                    </div>
-                  ))}
+
+            if (todayProds.length === 0) {
+              return (
+                <div className="py-8 text-center text-gray-400">
+                  <Package className="w-8 h-8 mx-auto opacity-20 mb-2" />
+                  <p className="text-xs">No products sold today</p>
                 </div>
-              </div>
+              );
+            }
+
+            const totalProdRev = todayProds.reduce((s, p) => s + p.revenue, 0);
+            return (
+              <>
+                <div className="space-y-3">
+                  {todayProds.map((p, i) => {
+                    const maxRev = todayProds[0]?.revenue || 1;
+                    const pct = Math.round((p.revenue / maxRev) * 100);
+                    const col = PALETTE[i % PALETTE.length];
+                    return (
+                      <div key={i}>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-[10px] font-bold shrink-0" style={{ color: col }}>{i + 1}</span>
+                            <span className="font-semibold text-gray-800 truncate">{p.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 ml-2">
+                            <span className="text-gray-400 text-[10px]">{p.count} sold</span>
+                            <span className="font-bold text-gray-900">{fmtRs(p.revenue)}</span>
+                          </div>
+                        </div>
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: col }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-4 pt-3 border-t border-gray-100 flex justify-between items-center">
+                  <span className="text-xs text-gray-500">Total Product Revenue</span>
+                  <span className="text-sm font-bold text-emerald-600">{fmtRs(totalProdRev)}</span>
+                </div>
+              </>
             );
           })()}
         </div>
@@ -817,7 +873,7 @@ export default function Dashboard() {
         {/* Today's Payment Methods */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <CreditCard className="w-4 h-4 text-violet-500" /> Payment Methods — Today
+            <CreditCard className="w-4 h-4 text-violet-500" /> Payments — Today
           </h3>
           {todayPayEntries.length === 0 ? (
             <div className="py-8 text-center text-gray-400">
