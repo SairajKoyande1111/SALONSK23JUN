@@ -207,12 +207,12 @@ export default function Reports() {
     const kpiHtml = [
       { val: fmtRs(s.totalRevenue || 0), lbl: "Total Revenue", sub: `${s.totalBills || 0} bills · ${s.periodCustCount || 0} clients`, cls: "" },
       { val: fmtRs(s.avgTicket || 0), lbl: "Avg Ticket Size", sub: "per bill", cls: "" },
-      { val: fmtRs(s.totalExpenses || 0), lbl: "Total Expenses", sub: `${expBrk.length} categories`, cls: "expense" },
-      { val: fmtRs(s.netProfit || 0), lbl: `Net Profit (${marginPct}% margin)`, sub: "", cls: "profit" },
+      { val: String(s.newCustomers || 0), lbl: "New Customers Added", sub: "joined in this period", cls: "" },
+      { val: `${fmtRs(s.servicesRevenue || 0)} / ${fmtRs(s.productsRevenue || 0)}`, lbl: "Services / Products Revenue", sub: "services · products", cls: "" },
     ].map(k => `<div class="kpi ${k.cls}"><div class="kpi-val">${k.val}</div><div class="kpi-lbl">${k.lbl}</div>${k.sub ? `<div class="kpi-sub">${k.sub}</div>` : ""}</div>`).join("");
 
     const svcRows = svcs.length
-      ? svcs.slice(0, 10).map((sv: any, i: number) => {
+      ? svcs.map((sv: any, i: number) => {
           const maxRev = svcs[0]?.revenue || 1;
           const pct = Math.round((sv.revenue / maxRev) * 100);
           return `<tr>
@@ -230,10 +230,9 @@ export default function Reports() {
           <td><span class="rank">${i + 1}</span></td>
           <td class="bold">${st.name}</td>
           <td class="right">${st.services}</td>
-          <td class="right">${fmtRs(st.revenue)}</td>
-          <td class="right muted">${fmtRs(st.commission)} (${st.commissionPct}%)</td>
+          <td class="right bold">${fmtRs(st.revenue)}</td>
         </tr>`).join("")
-      : `<tr><td colspan="5" class="muted">No staff data — assign staff while billing</td></tr>`;
+      : `<tr><td colspan="4" class="muted">No staff data — assign staff while billing</td></tr>`;
 
     const payRows = payMix.length
       ? payMix.map((p: any) => {
@@ -290,7 +289,7 @@ export default function Reports() {
 
   <div class="kpi-grid">${kpiHtml}</div>
 
-  <h2>Service Performance — Top 10</h2>
+  <h2>Service Performance — All Services</h2>
   <table>
     <thead><tr><th>#</th><th>Service</th><th class="right">Count</th><th class="right">Avg Ticket</th><th class="right">Revenue</th></tr></thead>
     <tbody>${svcRows}</tbody>
@@ -300,7 +299,7 @@ export default function Reports() {
     <div>
       <h2>Staff Performance</h2>
       <table>
-        <thead><tr><th>#</th><th>Staff</th><th class="right">Services</th><th class="right">Revenue</th><th class="right">Commission</th></tr></thead>
+        <thead><tr><th>#</th><th>Staff</th><th class="right">Services</th><th class="right">Revenue</th></tr></thead>
         <tbody>${staffRows}</tbody>
       </table>
     </div>
@@ -430,12 +429,25 @@ export default function Reports() {
               <KPICard label="Avg Ticket Size" value={fmtRs(s.avgTicket || 0)}
                 sub="per bill"
                 icon={Receipt} accent="bg-blue-100 text-blue-700" />
-              <KPICard label="Total Expenses" value={fmtRs(s.totalExpenses || 0)}
-                sub={`${expBrk.length} categor${expBrk.length === 1 ? "y" : "ies"}`}
-                icon={Wallet} accent="bg-orange-100 text-orange-700" />
-              <KPICard label="Net Profit" value={fmtRs(s.netProfit || 0)}
-                sub={(s.totalRevenue || 0) > 0 ? `${Math.round(((s.netProfit || 0) / s.totalRevenue) * 100)}% margin` : "—"}
-                icon={TrendingUp} accent={`${(s.netProfit || 0) >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`} />
+              <KPICard label="New Customers Added" value={String(s.newCustomers || 0)}
+                sub="joined in this period"
+                icon={Users} accent="bg-emerald-100 text-emerald-700" />
+              <div className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-4 shadow-sm">
+                <div className="flex items-start justify-between">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-pink-100 text-pink-700">
+                    <Scissors className="w-5 h-5" />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-baseline gap-1.5">
+                    <p className="text-lg font-bold text-gray-900 leading-none tracking-tight">{fmtRs(s.servicesRevenue || 0)}</p>
+                    <span className="text-xs text-gray-400">/</span>
+                    <p className="text-lg font-bold text-gray-900 leading-none tracking-tight">{fmtRs(s.productsRevenue || 0)}</p>
+                  </div>
+                  <p className="text-xs font-medium text-gray-500 mt-1.5">Services / Products Revenue</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">services · products split</p>
+                </div>
+              </div>
             </div>
 
             {/* ── Revenue Trend Chart ── */}
@@ -483,7 +495,7 @@ export default function Reports() {
                       </tr>
                     </thead>
                     <tbody>
-                      {svcs.slice(0, 10).map((sv: any, i: number) => {
+                      {svcs.map((sv: any, i: number) => {
                         const maxRev = svcs[0]?.revenue || 1;
                         const pct = Math.round((sv.revenue / maxRev) * 100);
                         return (
@@ -563,7 +575,6 @@ export default function Reports() {
                             </div>
                             <div className="flex justify-between text-[10px] text-gray-400 mt-1">
                               <span>{st.services} service{st.services !== 1 ? "s" : ""}</span>
-                              <span>Commission: {fmtRs(st.commission)} ({st.commissionPct}%)</span>
                             </div>
                           </div>
                         </div>
