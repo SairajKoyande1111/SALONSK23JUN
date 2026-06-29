@@ -94,13 +94,21 @@ router.get("/reports/analytics", async (req, res) => {
   const totalExpenses = (expenses as any[]).reduce((s: number, e: any) => s + (e.amount || 0), 0);
   const netProfit = totalRevenue - totalExpenses;
 
-  // ── Services vs Products revenue segregation ──
+  // ── Services vs Products revenue — proportional share of finalAmount ──
+  // item.total is pre-bill-discount; we distribute finalAmount proportionally
+  // so servicesRevenue + productsRevenue always equals totalRevenue exactly.
   let servicesRevenue = 0;
   let productsRevenue = 0;
   for (const bill of bills) {
-    for (const item of bill.items) {
-      if (item.type === "service") servicesRevenue += item.total;
-      else if (item.type === "product") productsRevenue += item.total;
+    const svcItemTotal = bill.items.filter(i => i.type === "service").reduce((s, i) => s + (i.total || 0), 0);
+    const prdItemTotal = bill.items.filter(i => i.type === "product").reduce((s, i) => s + (i.total || 0), 0);
+    const itemsTotal = svcItemTotal + prdItemTotal;
+    if (itemsTotal > 0) {
+      servicesRevenue += Math.round(bill.finalAmount * (svcItemTotal / itemsTotal));
+      productsRevenue += Math.round(bill.finalAmount * (prdItemTotal / itemsTotal));
+    } else {
+      // fallback: count entire bill as services
+      servicesRevenue += bill.finalAmount;
     }
   }
 
