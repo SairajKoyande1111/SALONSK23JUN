@@ -160,13 +160,17 @@ export default function Reports() {
         body { font-family: 'Segoe UI', Arial, sans-serif; color: #111827; font-size: 11px; background: #fff; }
 
         .header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 12px; border-bottom: 2px solid #7c3aed; margin-bottom: 16px; }
-        .salon-name { font-size: 22px; font-weight: 800; color: #4c1d95; letter-spacing: -0.5px; }
+        .header-left { display: flex; align-items: center; gap: 12px; }
+        .logo-circle { width: 52px; height: 52px; border-radius: 50%; overflow: hidden; border: 2px solid #ede9fe; flex-shrink: 0; }
+        .logo-circle img { width: 100%; height: 100%; object-fit: cover; }
+        .salon-name { font-size: 20px; font-weight: 800; color: #4c1d95; letter-spacing: -0.5px; }
+        .salon-sub { font-size: 10px; color: #7c3aed; font-weight: 600; margin-top: 1px; }
         .report-title { font-size: 11px; color: #6b7280; margin-top: 3px; }
         .meta-right { text-align: right; }
         .meta-right .period { font-size: 13px; font-weight: 700; color: #1f2937; }
         .meta-right .generated { font-size: 9.5px; color: #9ca3af; margin-top: 3px; }
 
-        .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+        .kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 18px; }
         .kpi { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #fafafa; }
         .kpi-val { font-size: 18px; font-weight: 800; color: #111827; }
         .kpi-lbl { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #6b7280; margin-top: 4px; }
@@ -205,9 +209,10 @@ export default function Reports() {
     `;
 
     const kpiHtml = [
-      { val: fmtRs(s.totalRevenue || 0), lbl: "Total Revenue", sub: `${s.totalBills || 0} bills · ${s.periodCustCount || 0} clients`, cls: "" },
+      { val: fmtRs(s.totalRevenue || 0), lbl: "Total Revenue", sub: `${s.totalBills || 0} bills`, cls: "" },
       { val: fmtRs(s.avgTicket || 0), lbl: "Avg Ticket Size", sub: "per bill", cls: "" },
-      { val: String(s.newCustomers || 0), lbl: "New Customers Added", sub: `♂ Male: ${s.newCustomersMale || 0}  ♀ Female: ${s.newCustomersFemale || 0}`, cls: "" },
+      { val: String(s.periodCustCount || 0), lbl: "Customers Visited", sub: "unique clients this period", cls: "" },
+      { val: String(s.newCustomers || 0), lbl: "New Customers Added", sub: `♂ ${s.newCustomersMale || 0} Male  ♀ ${s.newCustomersFemale || 0} Female`, cls: "" },
       { val: `${fmtRs(s.servicesRevenue || 0)} / ${fmtRs(s.productsRevenue || 0)}`, lbl: "Services / Products Revenue", sub: "services · products", cls: "" },
     ].map(k => `<div class="kpi ${k.cls}"><div class="kpi-val">${k.val}</div><div class="kpi-lbl">${k.lbl}</div>${k.sub ? `<div class="kpi-sub">${k.sub}</div>` : ""}</div>`).join("");
 
@@ -276,9 +281,15 @@ export default function Reports() {
 <html><head><meta charset="utf-8"><title>Salon Report — ${periodLabel}</title>${style}</head>
 <body>
   <div class="header">
-    <div>
-      <div class="salon-name">AT SALON</div>
-      <div class="report-title">Business Performance Report</div>
+    <div class="header-left">
+      <div class="logo-circle">
+        <img src="${window.location.origin}/thetouch-logo.jpg" alt="Logo" crossorigin="anonymous" />
+      </div>
+      <div>
+        <div class="salon-name">AT SMART SALON</div>
+        <div class="salon-sub">The Touch Unisex Salon</div>
+        <div class="report-title">Business Performance Report</div>
+      </div>
     </div>
     <div class="meta-right">
       <div class="period">${periodLabel}</div>
@@ -422,13 +433,16 @@ export default function Reports() {
         ) : (
           <>
             {/* ── KPI Row ── */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
               <KPICard label="Total Revenue" value={fmtRs(s.totalRevenue || 0)}
-                sub={`${s.totalBills || 0} bills · ${s.periodCustCount || 0} clients`}
+                sub={`${s.totalBills || 0} bills`}
                 icon={IndianRupee} accent="bg-violet-100 text-violet-700" trend={s.revGrowth} />
               <KPICard label="Avg Ticket Size" value={fmtRs(s.avgTicket || 0)}
                 sub="per bill"
                 icon={Receipt} accent="bg-blue-100 text-blue-700" />
+              <KPICard label="Customers Visited" value={String(s.periodCustCount || 0)}
+                sub="unique clients this period"
+                icon={UserCheck} accent="bg-amber-100 text-amber-700" />
               <div className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-4 shadow-sm">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-100 text-emerald-700">
                   <Users className="w-5 h-5" />
