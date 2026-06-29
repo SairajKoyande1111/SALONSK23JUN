@@ -21,6 +21,7 @@ import Memberships from "@/pages/memberships";
 import Reports from "@/pages/reports";
 import Invoices from "@/pages/invoices";
 import Upgradations from "@/pages/upgradations";
+import StaffDetail from "@/pages/staff-detail";
 import Settings from "@/pages/settings";
 
 const queryClient = new QueryClient();
@@ -43,6 +44,7 @@ function Router() {
         <Route path="/reports" component={Reports} />
         <Route path="/invoices" component={Invoices} />
         <Route path="/upgradations" component={Upgradations} />
+        <Route path="/staff-detail/:staffId" component={StaffDetail} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>
