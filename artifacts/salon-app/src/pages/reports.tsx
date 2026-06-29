@@ -6,7 +6,8 @@ import {
 import {
   TrendingUp, TrendingDown, Users, Receipt, Scissors,
   CreditCard, UserCheck, Download, ChevronLeft, ChevronRight,
-  Wallet, IndianRupee, Calendar, Package, BarChart2,
+  Wallet, IndianRupee, Calendar, Package, BarChart2, Crown,
+  CheckCircle2, XCircle,
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, subMonths, addMonths, startOfYear, subDays } from "date-fns";
 
@@ -718,6 +719,148 @@ export default function Reports() {
                 </div>
               </Card>
             </div>
+
+            {/* ── MEMBERSHIP ANALYTICS ─────────────────────── */}
+            {(() => {
+              const ma = (data as any)?.membershipAnalytics || {};
+              const breakdown: any[] = ma.breakdown || [];
+              const recent: any[] = ma.recent || [];
+              const totalSold: number = ma.total || 0;
+              const membershipRev: number = ma.revenue || 0;
+              const activeCount: number = ma.activeCount || 0;
+              const PLAN_COLORS: Record<string, string> = {
+                Silver: "#64748b", Gold: "#f59e0b", Platinum: "#7c3aed",
+                silver: "#64748b", gold: "#f59e0b", platinum: "#7c3aed",
+              };
+              const getPlanColor = (name: string) => {
+                const key = Object.keys(PLAN_COLORS).find(k => name.toLowerCase().includes(k.toLowerCase()));
+                return key ? PLAN_COLORS[key] : "#7c3aed";
+              };
+              return (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  {/* Header */}
+                  <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center">
+                        <Crown className="w-5 h-5 text-amber-600" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-900">Membership Analytics</h3>
+                        <p className="text-[11px] text-gray-400">Memberships sold in this period</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-6">
+                    {/* KPI row */}
+                    <div className="grid grid-cols-3 gap-4 mb-6">
+                      {[
+                        { label: "Memberships Sold", value: totalSold, accent: "bg-amber-50 text-amber-700", icon: Crown },
+                        { label: "Membership Revenue", value: fmtRs(membershipRev), accent: "bg-violet-50 text-violet-700", icon: IndianRupee },
+                        { label: "Currently Active", value: activeCount, accent: "bg-emerald-50 text-emerald-700", icon: CheckCircle2 },
+                      ].map(({ label, value, accent, icon: Icon }) => (
+                        <div key={label} className={`rounded-xl px-4 py-3 ${accent} border border-current/10`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <Icon className="w-3.5 h-3.5 opacity-70" />
+                            <span className="text-[11px] font-semibold opacity-80">{label}</span>
+                          </div>
+                          <p className="text-xl font-bold">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {totalSold === 0 ? (
+                      <div className="py-10 text-center text-gray-400">
+                        <Crown className="w-10 h-10 mx-auto opacity-20 mb-3" />
+                        <p className="text-sm font-medium">No memberships sold in this period</p>
+                        <p className="text-xs mt-1 opacity-60">Adjust the date range to see membership sales</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Plan breakdown */}
+                        <div>
+                          <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-3">By Plan</h4>
+                          <div className="space-y-3">
+                            {breakdown.map((plan: any, i: number) => {
+                              const col = getPlanColor(plan.name);
+                              const maxRev = breakdown[0]?.revenue || 1;
+                              const pct = Math.round((plan.revenue / maxRev) * 100);
+                              return (
+                                <div key={i}>
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: col }} />
+                                      <span className="text-xs font-bold text-gray-800">{plan.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 text-xs">
+                                      <span className="text-gray-400">{plan.count} sold</span>
+                                      <span className="flex items-center gap-1 text-emerald-600 font-semibold">
+                                        <CheckCircle2 className="w-3 h-3" />{plan.active} active
+                                      </span>
+                                      {plan.expired > 0 && (
+                                        <span className="flex items-center gap-1 text-gray-400">
+                                          <XCircle className="w-3 h-3" />{plan.expired} expired
+                                        </span>
+                                      )}
+                                      <span className="font-bold text-gray-900">{fmtRs(plan.revenue)}</span>
+                                    </div>
+                                  </div>
+                                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                    <div className="h-full rounded-full transition-all duration-700"
+                                      style={{ width: `${pct}%`, backgroundColor: col }} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Recent memberships sold */}
+                        <div>
+                          <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-3">Recently Sold</h4>
+                          <div className="space-y-0 border border-gray-100 rounded-xl overflow-hidden">
+                            {recent.slice(0, 8).map((cm: any, i: number) => {
+                              const col = getPlanColor(cm.plan);
+                              return (
+                                <div key={i} className={`flex items-center justify-between px-3 py-2.5 ${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                                      style={{ backgroundColor: col }}>
+                                      {(cm.customerName || "?").charAt(0).toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-semibold text-gray-800 truncate">{cm.customerName}</p>
+                                      <p className="text-[10px] text-gray-400">{cm.startDate} → {cm.endDate}</p>
+                                    </div>
+                                  </div>
+                                  <div className="text-right shrink-0 ml-2">
+                                    <div className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                                      style={{ backgroundColor: `${col}22`, color: col }}>
+                                      {cm.plan}
+                                    </div>
+                                    <p className="text-xs font-bold text-gray-900 mt-0.5">{fmtRs(cm.price)}</p>
+                                  </div>
+                                  {cm.isActive ? (
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 ml-2 shrink-0" />
+                                  ) : (
+                                    <XCircle className="w-3.5 h-3.5 text-gray-300 ml-2 shrink-0" />
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {recent.length > 8 && (
+                              <div className="px-3 py-2 text-center text-xs text-gray-400 bg-gray-50 border-t border-gray-100">
+                                +{recent.length - 8} more memberships in this period
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
           </>
         )}
