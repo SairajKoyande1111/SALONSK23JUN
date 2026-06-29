@@ -26,6 +26,27 @@ router.post("/staff", async (req, res) => {
   res.status(201).json({ ...member.toObject(), id: member._id.toString() });
 });
 
+router.put("/staff/:staffId", async (req, res) => {
+  const { staffId } = req.params;
+  const { name, specialization, commissionPercent, phone } = req.body;
+  const member = await Staff.findById(staffId);
+  if (!member) return res.status(404).json({ error: "Staff member not found" });
+  const avatarInitials = (name || member.name)
+    .split(" ")
+    .map((w: string) => w[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+  const updated = await Staff.findByIdAndUpdate(
+    staffId,
+    { name: name || member.name, specialization: specialization || member.specialization,
+      commissionPercent: commissionPercent ?? member.commissionPercent,
+      phone: phone !== undefined ? phone : member.phone, avatarInitials },
+    { new: true }
+  );
+  res.json({ ...updated!.toObject(), id: updated!._id.toString() });
+});
+
 router.delete("/staff/:staffId", async (req, res) => {
   const { staffId } = req.params;
   const member = await Staff.findById(staffId);

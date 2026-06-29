@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useListStaff, useCreateStaff } from "@workspace/api-client-react";
-import { Plus, Phone, X, Briefcase, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Phone, X, Briefcase, Trash2, AlertTriangle, Pencil } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 
 const poppins = { fontFamily: "'Poppins', sans-serif" };
+
+const EMPTY_FORM = { name: "", specialization: "Hair Stylist", commissionPercent: 10, phone: "" };
 
 export default function Staff() {
   const { data, isLoading, refetch } = useListStaff();
@@ -12,7 +14,12 @@ export default function Staff() {
   const { toast } = useToast();
 
   const [showAdd, setShowAdd] = useState(false);
-  const [formData, setFormData] = useState({ name: "", specialization: "Hair Stylist", commissionPercent: 10, phone: "" });
+  const [formData, setFormData] = useState({ ...EMPTY_FORM });
+
+  const [editStaff, setEditStaff] = useState<any>(null);
+  const [editForm, setEditForm] = useState({ name: "", specialization: "", commissionPercent: 10, phone: "" });
+  const [saving, setSaving] = useState(false);
+
   const [deleteStaff, setDeleteStaff] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -22,10 +29,41 @@ export default function Staff() {
       onSuccess: () => {
         toast({ title: "Staff Member Added" });
         setShowAdd(false);
-        setFormData({ name: "", specialization: "Hair Stylist", commissionPercent: 10, phone: "" });
+        setFormData({ ...EMPTY_FORM });
         refetch();
       }
     });
+  };
+
+  const openEdit = (s: any) => {
+    setEditStaff(s);
+    setEditForm({
+      name: s.name || "",
+      specialization: s.specialization || "",
+      commissionPercent: s.commissionPercent ?? 10,
+      phone: s.phone || "",
+    });
+  };
+
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editStaff) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/staff/${editStaff.id || editStaff._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      toast({ title: "Staff Updated", description: `${editForm.name}'s profile has been updated.` });
+      setEditStaff(null);
+      refetch();
+    } catch {
+      toast({ title: "Error", description: "Failed to update staff member.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -91,13 +129,20 @@ export default function Staff() {
                 </p>
               </div>
 
-              {/* Work History + Delete buttons */}
+              {/* Action buttons */}
               <div className="border-t border-border/50 pt-4 flex gap-2">
                 <Link href={`/staff/${s.id || s._id}/history`} className="flex-1">
                   <button className="w-full py-2.5 bg-primary/5 hover:bg-primary/10 text-primary rounded-xl font-semibold transition-colors text-sm flex items-center justify-center gap-2">
                     <Briefcase className="w-4 h-4" /> Work History
                   </button>
                 </Link>
+                <button
+                  onClick={() => openEdit(s)}
+                  className="py-2.5 px-3 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-xl font-semibold transition-colors text-sm flex items-center justify-center"
+                  title="Edit staff member"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
                 <button
                   onClick={() => setDeleteStaff(s)}
                   className="py-2.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl font-semibold transition-colors text-sm flex items-center justify-center"
@@ -111,7 +156,7 @@ export default function Staff() {
         </div>
       )}
 
-      {/* Add Staff Modal */}
+      {/* ── Add Staff Modal ── */}
       {showAdd && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-card rounded-3xl p-8 w-full max-w-md shadow-2xl" style={poppins}>
@@ -156,7 +201,59 @@ export default function Staff() {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* ── Edit Staff Modal ── */}
+      {editStaff && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-card rounded-3xl p-8 w-full max-w-md shadow-2xl" style={poppins}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-serif font-bold text-primary">Edit Staff Member</h2>
+              <button onClick={() => setEditStaff(null)} className="p-2 rounded-lg hover:bg-muted transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleEdit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">Full Name *</label>
+                <input required placeholder="Enter full name"
+                  className="w-full p-3 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none"
+                  value={editForm.name}
+                  onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">Specialization *</label>
+                <input required placeholder="e.g. Hair Stylist, Makeup Artist"
+                  className="w-full p-3 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none"
+                  value={editForm.specialization}
+                  onChange={e => setEditForm({ ...editForm, specialization: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">Phone</label>
+                <input placeholder="10-digit mobile number"
+                  className="w-full p-3 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none"
+                  value={editForm.phone}
+                  onChange={e => setEditForm({ ...editForm, phone: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 text-muted-foreground">Commission %</label>
+                <input type="number" min="0" max="100" placeholder="e.g. 10"
+                  className="w-full p-3 rounded-xl border bg-muted/30 focus:ring-2 focus:ring-primary/20 outline-none"
+                  value={editForm.commissionPercent}
+                  onChange={e => setEditForm({ ...editForm, commissionPercent: Number(e.target.value) })} />
+              </div>
+              <div className="flex gap-3 mt-8">
+                <button type="button" onClick={() => setEditStaff(null)}
+                  className="flex-1 py-3 rounded-xl border hover:bg-muted font-medium transition-colors">Cancel</button>
+                <button type="submit" disabled={saving}
+                  className="flex-1 py-3 rounded-xl bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-colors disabled:opacity-50">
+                  {saving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Confirmation Modal ── */}
       {deleteStaff && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6">
@@ -174,18 +271,12 @@ export default function Staff() {
               {deleteStaff.phone && <> &nbsp;·&nbsp; {deleteStaff.phone}</>}
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={() => setDeleteStaff(null)}
-                disabled={deleting}
-                className="flex-1 px-4 py-2.5 rounded-xl border border-border hover:bg-muted transition-colors text-sm font-semibold disabled:opacity-50"
-              >
+              <button onClick={() => setDeleteStaff(null)} disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-border hover:bg-muted transition-colors text-sm font-semibold disabled:opacity-50">
                 Cancel
               </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-colors text-sm font-semibold disabled:opacity-50"
-              >
+              <button onClick={handleDelete} disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-colors text-sm font-semibold disabled:opacity-50">
                 {deleting ? "Deleting…" : "Delete"}
               </button>
             </div>
