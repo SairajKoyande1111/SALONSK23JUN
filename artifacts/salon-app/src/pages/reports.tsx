@@ -1,452 +1,549 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { Card, CardContent } from "@/components/ui/card";
 import {
-  TrendingUp, TrendingDown, Users, Receipt, Star, Clock,
-  Scissors, Package, CreditCard, BarChart3, UserCheck, Repeat,
+  TrendingUp, TrendingDown, Users, Receipt, Scissors, Package,
+  CreditCard, BarChart3, UserCheck, Repeat, Download, ChevronLeft,
+  ChevronRight, Wallet, IndianRupee,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, startOfMonth, endOfMonth, subMonths, addMonths } from "date-fns";
 
 const API_BASE = "/api";
-
-const PALETTE = ["#7c3aed", "#db2777", "#ea580c", "#059669", "#2563eb", "#d97706", "#0891b2", "#7c3aed"];
+const PALETTE = ["#7c3aed", "#db2777", "#ea580c", "#059669", "#2563eb", "#d97706", "#0891b2", "#be185d"];
 const PAY_COLORS: Record<string, string> = { cash: "#059669", upi: "#7c3aed", card: "#2563eb", wallet: "#ea580c" };
 
-function StatCard({ label, value, sub, icon: Icon, color, bg, trend }: any) {
-  return (
-    <Card className="rounded-2xl border-border/50 shadow-sm hover:shadow-md transition-shadow">
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center`}>
-            <Icon className={`w-5 h-5 ${color}`} />
-          </div>
-          {trend !== undefined && (
-            <span className={`flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${trend >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>
-              {trend >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-              {Math.abs(trend)}%
-            </span>
-          )}
-        </div>
-        <p className="text-2xl font-bold text-foreground">{value}</p>
-        <p className="text-xs font-medium text-muted-foreground mt-0.5">{label}</p>
-        {sub && <p className="text-[11px] text-muted-foreground/70 mt-0.5">{sub}</p>}
-      </CardContent>
-    </Card>
-  );
-}
+function fmt(n: number) { return n.toLocaleString("en-IN"); }
+function fmtRs(n: number) { return `₹${fmt(n)}`; }
 
-function SectionHeader({ icon: Icon, title, sub }: any) {
+// ── Compact KPI card ──────────────────────────────────────────────────────────
+function KPI({ label, value, sub, icon: Icon, color, trend }: any) {
   return (
-    <div className="flex items-center gap-2.5 mb-4">
-      <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
-        <Icon className="w-4 h-4 text-primary" />
+    <div className="bg-white border border-gray-100 rounded-xl p-4 flex flex-col gap-3 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${color.bg}`}>
+          <Icon className={`w-4 h-4 ${color.icon}`} />
+        </div>
+        {trend !== undefined && (
+          <span className={`flex items-center gap-0.5 text-[11px] font-semibold px-2 py-0.5 rounded-full ${trend >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>
+            {trend >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+            {Math.abs(trend)}%
+          </span>
+        )}
       </div>
       <div>
-        <h2 className="text-sm font-bold text-foreground">{title}</h2>
-        {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
+        <p className="text-xl font-bold text-gray-900 leading-none">{value}</p>
+        <p className="text-[11px] text-gray-500 mt-1">{label}</p>
+        {sub && <p className="text-[10px] text-gray-400 mt-0.5">{sub}</p>}
       </div>
     </div>
   );
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+// ── Section heading ────────────────────────────────────────────────────────────
+function SectionHead({ title, border = true }: { title: string; border?: boolean }) {
+  return (
+    <div className={`flex items-center gap-2 mb-3 ${border ? "pb-2 border-b border-gray-100" : ""}`}>
+      <div className="w-0.5 h-4 rounded-full bg-violet-600" />
+      <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500">{title}</h3>
+    </div>
+  );
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+const Tip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-card border border-border rounded-xl shadow-lg px-4 py-3 text-xs">
-      <p className="font-semibold text-foreground mb-1">{label}</p>
+    <div className="bg-white border border-gray-100 rounded-lg shadow-lg px-3 py-2 text-xs">
+      <p className="font-semibold text-gray-700 mb-1">{label}</p>
       {payload.map((p: any) => (
         <p key={p.name} style={{ color: p.color }} className="font-medium">
-          {p.name}: {typeof p.value === "number" && p.name !== "Bills" && p.name !== "Count"
-            ? `₹${p.value.toLocaleString("en-IN")}`
-            : p.value}
+          {p.name}: {typeof p.value === "number" && !["Bills", "Count", "Services"].includes(p.name)
+            ? fmtRs(p.value) : p.value}
         </p>
       ))}
     </div>
   );
 };
 
+// ── Month picker ──────────────────────────────────────────────────────────────
+function MonthPicker({ selected, onChange }: { selected: Date; onChange: (d: Date) => void }) {
+  return (
+    <div className="flex items-center gap-1 bg-gray-100 rounded-lg px-2 py-1">
+      <button onClick={() => onChange(subMonths(selected, 1))}
+        className="p-1 rounded hover:bg-white transition-colors text-gray-500 hover:text-gray-900">
+        <ChevronLeft className="w-3.5 h-3.5" />
+      </button>
+      <span className="text-xs font-semibold text-gray-700 w-24 text-center select-none">
+        {format(selected, "MMMM yyyy")}
+      </span>
+      <button onClick={() => onChange(addMonths(selected, 1))}
+        disabled={addMonths(selected, 1) > new Date()}
+        className="p-1 rounded hover:bg-white transition-colors text-gray-500 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed">
+        <ChevronRight className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
 export default function Reports() {
-  const [range, setRange] = useState<"month" | "quarter" | "year">("month");
-  const [period, setPeriod] = useState<"daily" | "weekly" | "monthly">("daily");
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [analytics, setAnalytics] = useState<any>(null);
-  const [trend, setTrend] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const printRef = useRef<HTMLDivElement>(null);
+
+  const from = startOfMonth(selectedMonth);
+  const to = endOfMonth(selectedMonth);
 
   useEffect(() => {
-    const loadAll = async () => {
-      setLoading(true);
-      try {
-        const [aRes, tRes] = await Promise.all([
-          fetch(`${API_BASE}/reports/analytics?range=${range}`),
-          fetch(`${API_BASE}/reports/revenue?period=${period}`),
-        ]);
-        setAnalytics(await aRes.json());
-        setTrend(await tRes.json());
-      } catch {}
-      setLoading(false);
-    };
-    loadAll();
-  }, [range, period]);
+    setLoading(true);
+    fetch(`${API_BASE}/reports/analytics?from=${format(from, "yyyy-MM-dd")}&to=${format(to, "yyyy-MM-dd")}`)
+      .then(r => r.json())
+      .then(d => { setAnalytics(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [selectedMonth]);
 
-  const s = analytics?.summary || {};
-  const topServices: any[] = analytics?.topServices || [];
-  const topProducts: any[] = analytics?.topProducts || [];
-  const staffPerf: any[] = analytics?.staffPerformance || [];
-  const paymentMix: any[] = analytics?.paymentMix || [];
-  const peakHours: any[] = analytics?.peakHours || [];
-  const catShare: any[] = analytics?.categoryShare || [];
-  const ci = analytics?.customerInsights || {};
-  const trendData: any[] = trend?.data || [];
+  const s       = analytics?.summary || {};
+  const svcs    = analytics?.topServices || [];
+  const prods   = analytics?.topProducts || [];
+  const staff   = analytics?.staffPerformance || [];
+  const payMix  = analytics?.paymentMix || [];
+  const daily   = analytics?.dailyRevenue || [];
+  const catShare = analytics?.categoryShare || [];
+  const ci      = analytics?.customerInsights || {};
+  const expBrk  = analytics?.expenseBreakdown || [];
 
-  const rangeLabel = range === "month" ? "This Month" : range === "quarter" ? "Last 3 Months" : "This Year";
+  const periodLabel = format(selectedMonth, "MMMM yyyy");
+
+  function downloadReport() {
+    const style = `
+      <style>
+        @page { size: A4; margin: 18mm 15mm; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; color: #111; font-size: 11px; margin: 0; }
+        h1 { font-size: 20px; margin: 0 0 2px; color: #1e1e2e; }
+        h2 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #6d28d9; margin: 18px 0 8px; border-bottom: 1.5px solid #ede9fe; padding-bottom: 4px; }
+        .meta { font-size: 10px; color: #6b7280; margin-bottom: 18px; }
+        .kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 18px; }
+        .kpi { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; }
+        .kpi .val { font-size: 16px; font-weight: 700; color: #111; }
+        .kpi .lbl { font-size: 9px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+        .kpi .sub { font-size: 9px; color: #9ca3af; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+        th { background: #f5f3ff; text-align: left; padding: 5px 8px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #6d28d9; border-bottom: 1px solid #ede9fe; }
+        td { padding: 5px 8px; border-bottom: 1px solid #f3f4f6; font-size: 10.5px; color: #374151; }
+        tr:last-child td { border-bottom: none; }
+        .right { text-align: right; }
+        .bold { font-weight: 700; }
+        .muted { color: #9ca3af; }
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .profit-row { background: #f0fdf4; }
+        .profit-row td { color: #15803d; font-weight: 700; }
+        .top-row td { font-weight: 600; }
+        .bar-wrap { background: #f3f4f6; border-radius: 4px; height: 6px; overflow: hidden; margin-top: 2px; }
+        .bar { height: 6px; border-radius: 4px; background: #7c3aed; }
+        footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #e5e7eb; font-size: 9px; color: #9ca3af; display: flex; justify-content: space-between; }
+      </style>
+    `;
+
+    const kpis = [
+      { val: fmtRs(s.totalRevenue || 0), lbl: "Total Revenue", sub: `${s.totalBills || 0} bills` },
+      { val: fmtRs(s.avgTicket || 0), lbl: "Avg Ticket", sub: "per bill" },
+      { val: fmtRs(s.totalExpenses || 0), lbl: "Total Expenses", sub: "" },
+      { val: fmtRs(s.netProfit || 0), lbl: "Net Profit", sub: "" },
+    ];
+
+    const kpiHtml = kpis.map(k => `
+      <div class="kpi">
+        <div class="val">${k.val}</div>
+        <div class="lbl">${k.lbl}</div>
+        ${k.sub ? `<div class="sub">${k.sub}</div>` : ""}
+      </div>
+    `).join("");
+
+    const svcRows = svcs.slice(0, 10).map((sv: any, i: number) => `
+      <tr class="${i === 0 ? "top-row" : ""}">
+        <td>${i + 1}. ${sv.name}</td>
+        <td class="right">${sv.count}</td>
+        <td class="right bold">${fmtRs(sv.revenue)}</td>
+        <td class="right muted">${fmtRs(sv.avgTicket)}/visit</td>
+      </tr>
+    `).join("");
+
+    const staffRows = staff.map((st: any, i: number) => `
+      <tr class="${i === 0 ? "top-row" : ""}">
+        <td>${i + 1}. ${st.name}</td>
+        <td class="right">${st.services}</td>
+        <td class="right bold">${fmtRs(st.revenue)}</td>
+        <td class="right muted">${fmtRs(st.commission)} (${st.commissionPct}%)</td>
+      </tr>
+    `).join("");
+
+    const payRows = payMix.map((p: any) => {
+      const total = payMix.reduce((s: number, x: any) => s + x.amount, 0);
+      const pct = total > 0 ? Math.round((p.amount / total) * 100) : 0;
+      return `<tr><td class="bold" style="text-transform:capitalize">${p.method}</td><td class="right">${p.count}</td><td class="right bold">${fmtRs(p.amount)}</td><td class="right">${pct}%</td></tr>`;
+    }).join("");
+
+    const prodRows = prods.length ? prods.map((p: any, i: number) => `
+      <tr><td>${i + 1}. ${p.name}</td><td class="right">${p.count} units</td><td class="right bold">${fmtRs(p.revenue)}</td></tr>
+    `).join("") : `<tr><td colspan="3" class="muted">No product sales in this period</td></tr>`;
+
+    const expRows = expBrk.length ? expBrk.map((e: any) => `
+      <tr><td>${e.category}</td><td class="right bold">${fmtRs(e.amount)}</td></tr>
+    `).join("") + `<tr class="profit-row"><td class="bold">Net Profit</td><td class="right">${fmtRs(s.netProfit || 0)}</td></tr>`
+      : `<tr><td colspan="2" class="muted">No expenses recorded</td></tr>`;
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Salon Report — ${periodLabel}</title>${style}</head><body>
+      <h1>AT Salon — Business Report</h1>
+      <div class="meta">Period: ${periodLabel} &nbsp;|&nbsp; Generated: ${format(new Date(), "dd MMM yyyy, hh:mm a")} &nbsp;|&nbsp; Customers: ${s.periodCustCount || 0} visited · ${ci.totalCustomers || 0} total</div>
+
+      <h2>Financial Overview</h2>
+      <div class="kpi-grid">${kpiHtml}</div>
+
+      <div class="two-col">
+        <div>
+          <h2>Service Performance</h2>
+          <table><thead><tr><th>Service</th><th class="right">Qty</th><th class="right">Revenue</th><th class="right">Avg</th></tr></thead>
+          <tbody>${svcRows || `<tr><td colspan="4" class="muted">No service data</td></tr>`}</tbody></table>
+        </div>
+        <div>
+          <h2>Staff Performance</h2>
+          <table><thead><tr><th>Staff</th><th class="right">Services</th><th class="right">Revenue</th><th class="right">Commission</th></tr></thead>
+          <tbody>${staffRows || `<tr><td colspan="4" class="muted">No staff data</td></tr>`}</tbody></table>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div>
+          <h2>Payment Methods</h2>
+          <table><thead><tr><th>Method</th><th class="right">Count</th><th class="right">Amount</th><th class="right">Share</th></tr></thead>
+          <tbody>${payRows || `<tr><td colspan="4" class="muted">No data</td></tr>`}</tbody></table>
+        </div>
+        <div>
+          <h2>Product Sales</h2>
+          <table><thead><tr><th>Product</th><th class="right">Sold</th><th class="right">Revenue</th></tr></thead>
+          <tbody>${prodRows}</tbody></table>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div>
+          <h2>Revenue vs Expenses</h2>
+          <table><thead><tr><th>Category</th><th class="right">Amount</th></tr></thead>
+          <tbody>
+            <tr><td class="bold">Total Revenue</td><td class="right bold">${fmtRs(s.totalRevenue || 0)}</td></tr>
+            ${expRows}
+          </tbody></table>
+        </div>
+        <div>
+          <h2>Customer Metrics</h2>
+          <table>
+            <tbody>
+              <tr><td>Total Clients (all time)</td><td class="right bold">${ci.totalCustomers || 0}</td></tr>
+              <tr><td>Visited This Period</td><td class="right bold">${s.periodCustCount || 0}</td></tr>
+              <tr><td>Repeat Clients</td><td class="right bold">${ci.repeatCustomers || 0}</td></tr>
+              <tr><td>Retention Rate</td><td class="right bold">${ci.retentionRate || 0}%</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <footer>
+        <span>AT Salon — Confidential</span>
+        <span>Report for ${periodLabel}</span>
+      </footer>
+    </body></html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { w.print(); }, 400);
+  }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto animate-in fade-in duration-500">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+    <div className="p-6 max-w-7xl mx-auto animate-in fade-in duration-300">
+      {/* ── Header ── */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
         <div>
-          <h1 className="text-3xl font-serif font-bold text-primary">Reports & Analytics</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Real business insights · {format(new Date(), "MMMM yyyy")}</p>
+          <h1 className="text-2xl font-serif font-bold text-gray-900">Business Reports</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Detailed analytics for {periodLabel}</p>
         </div>
-        <div className="flex items-center bg-muted rounded-xl p-1">
-          {(["month", "quarter", "year"] as const).map(r => (
-            <button key={r} onClick={() => setRange(r)}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold capitalize transition-all ${range === r ? "bg-card shadow text-primary" : "text-muted-foreground hover:text-foreground"}`}>
-              {r === "month" ? "This Month" : r === "quarter" ? "Quarter" : "This Year"}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <MonthPicker selected={selectedMonth} onChange={setSelectedMonth} />
+          <button onClick={downloadReport}
+            className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-sm">
+            <Download className="w-3.5 h-3.5" />
+            Download Report
+          </button>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard label={`Revenue (${rangeLabel})`} value={`₹${(s.totalRevenue || 0).toLocaleString("en-IN")}`} sub={`${s.totalBills || 0} bills`} icon={TrendingUp} color="text-emerald-600" bg="bg-emerald-50" trend={s.revGrowth} />
-        <StatCard label="Avg Ticket Size" value={`₹${(s.avgTicket || 0).toLocaleString("en-IN")}`} sub="per bill" icon={Receipt} color="text-violet-600" bg="bg-violet-50" />
-        <StatCard label="Active Customers" value={s.periodCustCount || 0} sub={`of ${s.totalCustomers || 0} total`} icon={Users} color="text-blue-600" bg="bg-blue-50" />
-        <StatCard label="Customer Retention" value={`${ci.retentionRate || 0}%`} sub={`${ci.repeatCustomers || 0} repeat clients`} icon={Repeat} color="text-rose-600" bg="bg-rose-50" />
-      </div>
+      {loading ? (
+        <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
+          Loading analytics…
+        </div>
+      ) : (
+        <div ref={printRef} className="space-y-6">
 
-      {/* Revenue Trend */}
-      <Card className="rounded-2xl border-border/50 shadow-sm mb-6">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-5">
-            <SectionHeader icon={BarChart3} title="Revenue Trend" sub="Track income over time" />
-            <div className="flex bg-muted p-1 rounded-xl gap-1">
-              {(["daily", "weekly", "monthly"] as const).map(p => (
-                <button key={p} onClick={() => setPeriod(p)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all ${period === p ? "bg-card shadow text-primary" : "text-muted-foreground"}`}>
-                  {p === "daily" ? "7 Days" : p === "weekly" ? "6 Weeks" : "6 Months"}
-                </button>
-              ))}
+          {/* ── KPI Row ── */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <KPI label="Total Revenue" value={fmtRs(s.totalRevenue || 0)} sub={`${s.totalBills || 0} bills · ${s.periodCustCount || 0} clients`}
+              icon={IndianRupee} color={{ bg: "bg-violet-50", icon: "text-violet-600" }} trend={s.revGrowth} />
+            <KPI label="Avg Ticket Size" value={fmtRs(s.avgTicket || 0)} sub="per bill"
+              icon={Receipt} color={{ bg: "bg-blue-50", icon: "text-blue-600" }} />
+            <KPI label="Total Expenses" value={fmtRs(s.totalExpenses || 0)} sub={`${expBrk.length} categories`}
+              icon={Wallet} color={{ bg: "bg-orange-50", icon: "text-orange-600" }} />
+            <KPI label="Net Profit" value={fmtRs(s.netProfit || 0)}
+              sub={(s.totalRevenue || 0) > 0 ? `${Math.round(((s.netProfit || 0) / s.totalRevenue) * 100)}% margin` : ""}
+              icon={TrendingUp} color={{ bg: "bg-emerald-50", icon: "text-emerald-600" }} />
+          </div>
+
+          {/* ── Revenue Trend Chart ── */}
+          <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+            <SectionHead title="Daily Revenue Trend" />
+            {daily.length === 0 || daily.every((d: any) => d.revenue === 0) ? (
+              <div className="h-44 flex items-center justify-center text-gray-400 text-sm">
+                No revenue recorded in {periodLabel}
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={daily} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="rg" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#9ca3af" }} interval="preserveStartEnd" />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#9ca3af" }} tickFormatter={v => v === 0 ? "₹0" : `₹${(v/1000).toFixed(0)}k`} />
+                  <Tooltip content={<Tip />} />
+                  <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#7c3aed" strokeWidth={2} fill="url(#rg)" dot={false} activeDot={{ r: 4, fill: "#7c3aed" }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          {/* ── Services + Category ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Service Table */}
+            <div className="lg:col-span-2 bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+              <SectionHead title="Service Performance" />
+              {svcs.length === 0 ? (
+                <div className="h-32 flex items-center justify-center text-gray-400 text-sm">No service data</div>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-gray-400 text-[10px] uppercase tracking-wider border-b border-gray-100">
+                      <th className="pb-2 font-semibold">Service</th>
+                      <th className="pb-2 font-semibold text-right">Qty</th>
+                      <th className="pb-2 font-semibold text-right">Revenue</th>
+                      <th className="pb-2 font-semibold text-right">Avg</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {svcs.slice(0, 8).map((sv: any, i: number) => (
+                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                        <td className="py-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full shrink-0" style={{ background: PALETTE[i % PALETTE.length] }} />
+                            <span className="font-medium text-gray-800 truncate max-w-[180px]">{sv.name}</span>
+                          </div>
+                        </td>
+                        <td className="py-2 text-right text-gray-500">{sv.count}×</td>
+                        <td className="py-2 text-right font-bold text-gray-900">{fmtRs(sv.revenue)}</td>
+                        <td className="py-2 text-right text-gray-400">{fmtRs(sv.avgTicket)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Category Donut */}
+            <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+              <SectionHead title="Revenue by Category" />
+              {catShare.length === 0 ? (
+                <div className="h-32 flex items-center justify-center text-gray-400 text-sm">No data</div>
+              ) : (
+                <>
+                  <ResponsiveContainer width="100%" height={140}>
+                    <PieChart>
+                      <Pie data={catShare} innerRadius={38} outerRadius={62} dataKey="revenue" paddingAngle={2} startAngle={90} endAngle={-270}>
+                        {catShare.map((_: any, i: number) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+                      </Pie>
+                      <Tooltip formatter={(v: any) => [fmtRs(Number(v))]} contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="space-y-1.5 mt-1">
+                    {catShare.map((c: any, i: number) => (
+                      <div key={c.name} className="flex items-center gap-2 text-xs">
+                        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: PALETTE[i % PALETTE.length] }} />
+                        <span className="flex-1 text-gray-600 truncate">{c.name}</span>
+                        <span className="text-gray-400 text-[10px]">{c.pct}%</span>
+                        <span className="font-semibold text-gray-800">{fmtRs(c.revenue)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
-          {trendData.length === 0 || trendData.every(d => d.revenue === 0) ? (
-            <div className="h-52 flex flex-col items-center justify-center text-muted-foreground gap-2">
-              <BarChart3 className="w-10 h-10 opacity-20" />
-              <p className="text-sm">No revenue data yet for this period</p>
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={230}>
-              <AreaChart data={trendData} margin={{ left: 0, right: 10, top: 5 }}>
-                <defs>
-                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10 }} tickFormatter={v => v === 0 ? "₹0" : `₹${(v / 1000).toFixed(0)}k`} />
-                <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#7c3aed" strokeWidth={2.5} fill="url(#revGrad)" dot={{ fill: "#7c3aed", r: 3, strokeWidth: 0 }} activeDot={{ r: 5, fill: "#7c3aed" }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-          {trendData.length > 0 && (
-            <div className="mt-4 grid grid-cols-3 gap-4 pt-4 border-t border-border/40">
-              <div className="text-center">
-                <p className="text-lg font-bold text-foreground">₹{(trend?.totalRevenue || 0).toLocaleString("en-IN")}</p>
-                <p className="text-xs text-muted-foreground">Total Revenue</p>
-              </div>
-              <div className="text-center">
-                <p className="text-lg font-bold text-foreground">{trend?.totalBills || 0}</p>
-                <p className="text-xs text-muted-foreground">Total Bills</p>
-              </div>
-              <div className="text-center">
-                <p className="text-lg font-bold text-foreground">₹{trend?.totalBills > 0 ? Math.round((trend?.totalRevenue || 0) / trend?.totalBills).toLocaleString("en-IN") : 0}</p>
-                <p className="text-xs text-muted-foreground">Avg per Bill</p>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* Services + Category Split */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-6">
-        {/* Service Performance */}
-        <Card className="lg:col-span-3 rounded-2xl border-border/50 shadow-sm">
-          <CardContent className="p-6">
-            <SectionHeader icon={Scissors} title="Service Performance" sub={rangeLabel} />
-            {topServices.length === 0 ? (
-              <div className="h-52 flex flex-col items-center justify-center text-muted-foreground gap-2">
-                <Scissors className="w-10 h-10 opacity-20" />
-                <p className="text-sm">No service data yet</p>
-              </div>
-            ) : (
-              <>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={topServices.slice(0, 6)} layout="vertical" margin={{ left: 0, right: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-                    <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} tickFormatter={v => v === 0 ? "₹0" : `₹${(v / 1000).toFixed(0)}k`} />
-                    <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} width={100} tickFormatter={(v: string) => v.length > 14 ? v.substring(0, 14) + "…" : v} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="revenue" name="Revenue" radius={[0, 6, 6, 0]} barSize={16}>
-                      {topServices.slice(0, 6).map((_: any, i: number) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-                <div className="mt-4 divide-y divide-border/40">
-                  {topServices.slice(0, 5).map((svc: any, i: number) => (
-                    <div key={i} className="flex items-center gap-3 py-2 text-xs">
-                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: PALETTE[i % PALETTE.length] }} />
-                      <span className="flex-1 font-medium text-foreground truncate">{svc.name}</span>
-                      <span className="text-muted-foreground">{svc.count}x</span>
-                      <span className="font-semibold text-foreground w-20 text-right">₹{svc.revenue.toLocaleString("en-IN")}</span>
-                      <span className="text-muted-foreground w-16 text-right">avg ₹{svc.avgTicket.toLocaleString("en-IN")}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Category Split */}
-        <Card className="lg:col-span-2 rounded-2xl border-border/50 shadow-sm">
-          <CardContent className="p-6">
-            <SectionHeader icon={Star} title="Revenue by Category" sub="Service categories" />
-            {catShare.length === 0 ? (
-              <div className="h-52 flex flex-col items-center justify-center text-muted-foreground gap-2">
-                <Star className="w-10 h-10 opacity-20" />
-                <p className="text-sm">No category data yet</p>
-              </div>
-            ) : (
-              <>
-                <ResponsiveContainer width="100%" height={170}>
-                  <PieChart>
-                    <Pie data={catShare} innerRadius={45} outerRadius={72} dataKey="revenue" paddingAngle={3}>
-                      {catShare.map((_: any, i: number) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
-                    </Pie>
-                    <Tooltip formatter={(v: any) => [`₹${Number(v).toLocaleString("en-IN")}`]} contentStyle={{ borderRadius: 12, fontSize: 12, border: "1px solid hsl(var(--border))" }} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="space-y-2 mt-2">
-                  {catShare.map((c: any, i: number) => (
-                    <div key={c.name} className="flex items-center gap-2 text-xs">
-                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: PALETTE[i % PALETTE.length] }} />
-                      <span className="flex-1 text-muted-foreground">{c.name}</span>
-                      <span className="font-semibold text-foreground">{c.pct}%</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Staff + Payment */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Staff Performance */}
-        <Card className="rounded-2xl border-border/50 shadow-sm">
-          <CardContent className="p-6">
-            <SectionHeader icon={UserCheck} title="Staff Performance" sub="Revenue & commission breakdown" />
-            {staffPerf.length === 0 ? (
-              <div className="h-40 flex flex-col items-center justify-center text-muted-foreground gap-2">
-                <UserCheck className="w-10 h-10 opacity-20" />
-                <p className="text-sm">No staff data yet — assign staff while billing</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {staffPerf.map((st: any, i: number) => {
-                  const maxRev = staffPerf[0]?.revenue || 1;
-                  const pct = Math.round((st.revenue / maxRev) * 100);
-                  return (
-                    <div key={i}>
-                      <div className="flex items-center gap-3 mb-1.5">
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style={{ background: PALETTE[i % PALETTE.length] }}>
+          {/* ── Staff + Payment ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Staff */}
+            <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+              <SectionHead title="Staff Performance" />
+              {staff.length === 0 ? (
+                <div className="h-32 flex items-center justify-center text-gray-400 text-sm">No staff data — assign staff while billing</div>
+              ) : (
+                <div className="space-y-3">
+                  {staff.map((st: any, i: number) => {
+                    const maxRev = staff[0]?.revenue || 1;
+                    const pct = Math.round((st.revenue / maxRev) * 100);
+                    return (
+                      <div key={i} className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                          style={{ background: PALETTE[i % PALETTE.length] }}>
                           {st.name.substring(0, 2).toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex justify-between items-center">
-                            <span className="font-semibold text-sm text-foreground truncate">{st.name}</span>
-                            <span className="font-bold text-sm text-foreground shrink-0">₹{st.revenue.toLocaleString("en-IN")}</span>
+                          <div className="flex justify-between items-center mb-0.5">
+                            <span className="text-xs font-semibold text-gray-800 truncate">{st.name}</span>
+                            <span className="text-xs font-bold text-gray-900 shrink-0 ml-2">{fmtRs(st.revenue)}</span>
                           </div>
-                          <div className="mt-1 h-2 bg-muted rounded-full overflow-hidden">
-                            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: PALETTE[i % PALETTE.length] }} />
+                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: PALETTE[i % PALETTE.length] }} />
                           </div>
-                          <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
+                          <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
                             <span>{st.services} service{st.services !== 1 ? "s" : ""}</span>
-                            <span>Commission ({st.commissionPct}%): ₹{st.commission.toLocaleString("en-IN")}</span>
+                            <span>Commission: {fmtRs(st.commission)} ({st.commissionPct}%)</span>
                           </div>
                         </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Payment Mix */}
-        <Card className="rounded-2xl border-border/50 shadow-sm">
-          <CardContent className="p-6">
-            <SectionHeader icon={CreditCard} title="Payment Methods" sub="How customers pay" />
-            {paymentMix.length === 0 ? (
-              <div className="h-40 flex flex-col items-center justify-center text-muted-foreground gap-2">
-                <CreditCard className="w-10 h-10 opacity-20" />
-                <p className="text-sm">No payment data yet</p>
-              </div>
-            ) : (
-              <div className="flex gap-4 items-center">
-                <div className="w-[140px] h-[140px] shrink-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={paymentMix} dataKey="amount" innerRadius={35} outerRadius={60} paddingAngle={3}>
-                        {paymentMix.map((p: any) => <Cell key={p.method} fill={PAY_COLORS[p.method] || "#94a3b8"} />)}
-                      </Pie>
-                      <Tooltip formatter={(v: any) => [`₹${Number(v).toLocaleString("en-IN")}`]} contentStyle={{ borderRadius: 12, fontSize: 12 }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="flex-1 space-y-3">
-                  {paymentMix.map((p: any) => {
-                    const total = paymentMix.reduce((s: number, x: any) => s + x.amount, 0);
-                    const pct = total > 0 ? Math.round((p.amount / total) * 100) : 0;
-                    return (
-                      <div key={p.method}>
-                        <div className="flex justify-between items-center mb-1">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2.5 h-2.5 rounded-full" style={{ background: PAY_COLORS[p.method] || "#94a3b8" }} />
-                            <span className="text-xs font-semibold capitalize text-foreground">{p.method}</span>
-                          </div>
-                          <span className="text-xs font-bold text-foreground">{pct}%</span>
-                        </div>
-                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: PAY_COLORS[p.method] || "#94a3b8" }} />
-                        </div>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{p.count} transactions · ₹{p.amount.toLocaleString("en-IN")}</p>
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Peak Hours + Products + Customer Health */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        {/* Peak Hours */}
-        <Card className="rounded-2xl border-border/50 shadow-sm">
-          <CardContent className="p-6">
-            <SectionHeader icon={Clock} title="Busiest Hours" sub="When you get most customers" />
-            {peakHours.every((h: any) => h.count === 0) ? (
-              <div className="h-40 flex flex-col items-center justify-center text-muted-foreground gap-2">
-                <Clock className="w-10 h-10 opacity-20" />
-                <p className="text-sm">No data yet</p>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={170}>
-                <BarChart data={peakHours} margin={{ left: -10, right: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                  <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{ fontSize: 9 }} interval={1} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10 }} allowDecimals={false} />
-                  <Tooltip contentStyle={{ borderRadius: 12, fontSize: 12, border: "1px solid hsl(var(--border))" }} formatter={(v: any) => [v, "Bills"]} />
-                  <Bar dataKey="count" name="Bills" radius={[4, 4, 0, 0]}>
-                    {peakHours.map((h: any, i: number) => (
-                      <Cell key={i} fill={h.count === Math.max(...peakHours.map((x: any) => x.count)) ? "#7c3aed" : "#c4b5fd"} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Products */}
-        <Card className="rounded-2xl border-border/50 shadow-sm">
-          <CardContent className="p-6">
-            <SectionHeader icon={Package} title="Product Sales" sub={rangeLabel} />
-            {topProducts.length === 0 ? (
-              <div className="h-40 flex flex-col items-center justify-center text-muted-foreground gap-2">
-                <Package className="w-10 h-10 opacity-20" />
-                <p className="text-sm">No product sales yet</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {topProducts.map((p: any, i: number) => {
-                  const maxRev = topProducts[0]?.revenue || 1;
-                  const pct = Math.round((p.revenue / maxRev) * 100);
-                  return (
-                    <div key={i}>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="font-medium text-foreground truncate">{p.name}</span>
-                        <span className="text-muted-foreground shrink-0 ml-2">{p.count} sold</span>
-                      </div>
-                      <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: PALETTE[i % PALETTE.length] }} />
-                      </div>
-                      <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">₹{p.revenue.toLocaleString("en-IN")}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Customer Health */}
-        <Card className="rounded-2xl border-border/50 shadow-sm">
-          <CardContent className="p-6">
-            <SectionHeader icon={Users} title="Customer Health" sub="Retention & loyalty" />
-            <div className="space-y-4 mt-2">
-              <div className="text-center py-4 bg-violet-50 rounded-2xl">
-                <p className="text-3xl font-bold text-violet-700">{ci.retentionRate || 0}%</p>
-                <p className="text-xs text-violet-600 font-medium mt-0.5">Retention Rate</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-xl bg-muted/40 text-center">
-                  <p className="text-xl font-bold text-foreground">{ci.totalCustomers || 0}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Total Clients</p>
-                </div>
-                <div className="p-3 rounded-xl bg-muted/40 text-center">
-                  <p className="text-xl font-bold text-foreground">{ci.repeatCustomers || 0}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Repeat Clients</p>
-                </div>
-                <div className="p-3 rounded-xl bg-muted/40 text-center">
-                  <p className="text-xl font-bold text-foreground">{ci.uniqueBilledCustomers || 0}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Billed Clients</p>
-                </div>
-                <div className="p-3 rounded-xl bg-muted/40 text-center">
-                  <p className="text-xl font-bold text-emerald-600">{(ci.uniqueBilledCustomers || 0) - (ci.repeatCustomers || 0)}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">First-timers</p>
-                </div>
-              </div>
-              <p className="text-[11px] text-center text-muted-foreground">
-                {ci.retentionRate >= 60 ? "Excellent retention — keep rewarding loyal clients" :
-                 ci.retentionRate >= 40 ? "Good retention — consider a membership programme" :
-                 "Focus on bringing back past customers"}
-              </p>
+              )}
             </div>
-          </CardContent>
-        </Card>
-      </div>
+
+            {/* Payment Mix */}
+            <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+              <SectionHead title="Payment Methods" />
+              {payMix.length === 0 ? (
+                <div className="h-32 flex items-center justify-center text-gray-400 text-sm">No payment data</div>
+              ) : (
+                <div className="flex gap-4 items-center">
+                  <div className="w-[130px] h-[130px] shrink-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={payMix} dataKey="amount" innerRadius={32} outerRadius={55} paddingAngle={2}>
+                          {payMix.map((p: any) => <Cell key={p.method} fill={PAY_COLORS[p.method] || "#94a3b8"} />)}
+                        </Pie>
+                        <Tooltip formatter={(v: any) => [fmtRs(Number(v))]} contentStyle={{ borderRadius: 8, fontSize: 11 }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex-1 space-y-2.5">
+                    {payMix.map((p: any) => {
+                      const total = payMix.reduce((s: number, x: any) => s + x.amount, 0);
+                      const pct = total > 0 ? Math.round((p.amount / total) * 100) : 0;
+                      return (
+                        <div key={p.method}>
+                          <div className="flex justify-between items-center mb-0.5">
+                            <span className="text-xs font-semibold capitalize text-gray-700">{p.method}</span>
+                            <span className="text-xs font-bold text-gray-900">{pct}%</span>
+                          </div>
+                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: PAY_COLORS[p.method] || "#94a3b8" }} />
+                          </div>
+                          <p className="text-[10px] text-gray-400 mt-0.5">{p.count} txn · {fmtRs(p.amount)}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Products + Expenses + Customer ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Products */}
+            <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+              <SectionHead title="Product Sales" />
+              {prods.length === 0 ? (
+                <div className="h-24 flex items-center justify-center text-gray-400 text-sm">No product sales</div>
+              ) : (
+                <div className="space-y-2.5">
+                  {prods.slice(0, 6).map((p: any, i: number) => {
+                    const maxR = prods[0]?.revenue || 1;
+                    const pct = Math.round((p.revenue / maxR) * 100);
+                    return (
+                      <div key={i}>
+                        <div className="flex justify-between text-xs mb-0.5">
+                          <span className="font-medium text-gray-800 truncate">{p.name}</span>
+                          <span className="text-gray-400 shrink-0 ml-2">{p.count} sold</span>
+                        </div>
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: PALETTE[i % PALETTE.length] }} />
+                        </div>
+                        <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">{fmtRs(p.revenue)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Expenses */}
+            <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+              <SectionHead title="Revenue vs Expenses" />
+              <div className="space-y-2">
+                <div className="flex justify-between items-center py-1.5 border-b border-gray-100">
+                  <span className="text-xs text-gray-600 font-medium">Total Revenue</span>
+                  <span className="text-xs font-bold text-gray-900">{fmtRs(s.totalRevenue || 0)}</span>
+                </div>
+                {expBrk.map((e: any, i: number) => (
+                  <div key={i} className="flex justify-between items-center py-1">
+                    <span className="text-xs text-gray-500">{e.category}</span>
+                    <span className="text-xs text-red-500 font-semibold">− {fmtRs(e.amount)}</span>
+                  </div>
+                ))}
+                {expBrk.length === 0 && <p className="text-[11px] text-gray-400">No expenses in {periodLabel}</p>}
+                <div className="flex justify-between items-center py-1.5 border-t border-gray-200 mt-1">
+                  <span className="text-xs font-bold text-gray-700">Net Profit</span>
+                  <span className={`text-sm font-bold ${(s.netProfit || 0) >= 0 ? "text-emerald-600" : "text-red-600"}`}>{fmtRs(s.netProfit || 0)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Customer Metrics */}
+            <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+              <SectionHead title="Customer Metrics" />
+              <div className="space-y-2.5">
+                {[
+                  { label: "Clients Visited", value: s.periodCustCount || 0, color: "text-violet-700 bg-violet-50" },
+                  { label: "Total Clients (all time)", value: ci.totalCustomers || 0, color: "text-blue-700 bg-blue-50" },
+                  { label: "Repeat Clients", value: ci.repeatCustomers || 0, color: "text-pink-700 bg-pink-50" },
+                  { label: "Retention Rate", value: `${ci.retentionRate || 0}%`, color: "text-emerald-700 bg-emerald-50" },
+                ].map(m => (
+                  <div key={m.label} className={`flex items-center justify-between px-3 py-2.5 rounded-lg ${m.color}`}>
+                    <span className="text-xs font-medium">{m.label}</span>
+                    <span className="text-base font-bold">{m.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+        </div>
+      )}
     </div>
   );
 }

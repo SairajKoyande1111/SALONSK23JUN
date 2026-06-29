@@ -79,7 +79,7 @@ function StaffPicker({ staff, value, onChange, placeholder }: {
         <ChevronDown className="w-3 h-3 ml-auto shrink-0 opacity-60" />
       </button>
       {open && (
-        <div className="absolute bottom-full mb-1 left-0 z-50 w-48 rounded-xl shadow-2xl overflow-hidden border border-sidebar-border bg-sidebar-accent">
+        <div className="absolute top-full mt-1 left-0 z-50 w-48 rounded-xl shadow-2xl overflow-hidden border border-sidebar-border bg-sidebar-accent">
           <button type="button"
             onClick={() => { onChange(""); setOpen(false); }}
             className="w-full text-left px-3 py-2 text-xs text-white/50 hover:bg-sidebar/60 transition-colors border-b border-sidebar-border">
