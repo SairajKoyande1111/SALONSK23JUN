@@ -259,13 +259,16 @@ router.get("/reports/analytics", async (req, res) => {
     membershipPlanMap[key].count++;
     membershipPlanMap[key].revenue += cm.price || 0;
     if (cm.isActive && cm.endDate >= todayStr) membershipPlanMap[key].active++;
-    else membershipPlanMap[key].expired++;
+    else if (cm.endDate < todayStr) membershipPlanMap[key].expired++;
+    // records with isActive:false but endDate >= today were revoked/replaced — exclude from counts
   }
   const membershipBreakdown = Object.values(membershipPlanMap).sort((a, b) => b.revenue - a.revenue);
   const membershipRevenue = membershipArr.reduce((s, cm) => s + (cm.price || 0), 0);
   const activeMembershipsInPeriod = membershipArr.filter(cm => cm.isActive && cm.endDate >= todayStr).length;
+  // Exclude revoked/replaced records (isActive:false but endDate not yet past) from the recent list
+  const validMembershipArr = membershipArr.filter(cm => cm.isActive || cm.endDate < todayStr);
   // Sort by endDate ascending (nearest expiry first) — active first, then expired
-  const recentMemberships = [...membershipArr]
+  const recentMemberships = [...validMembershipArr]
     .map(cm => ({
       customerName: cm.customerName || "—",
       customerId: cm.customerId || "",

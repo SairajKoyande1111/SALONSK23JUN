@@ -391,7 +391,7 @@ export default function Dashboard() {
                 const cnt = f === "today" ? todayAppts.length
                   : f === "week" ? weekAppts.length
                   : f === "month" ? monthAppts.length
-                  : f === "reminders" ? followUpReminders.length
+                  : f === "reminders" ? Object.values(followUpReminders).reduce((s: number, arr: any[]) => s + arr.length, 0)
                   : [...monthAppts, ...upcomingAppts.filter((a: any) => !monthAppts.find((m: any) => m.id === a.id))].length;
                 const lbl = f === "today" ? "Today" : f === "week" ? "This Week" : f === "month" ? "This Month" : f === "reminders" ? "🔔 Reminders" : "All";
                 const isActive = apptFilter === f;
@@ -400,7 +400,7 @@ export default function Dashboard() {
                     className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                       isActive
                         ? f === "reminders" ? "bg-amber-500 shadow text-white" : "bg-white shadow text-violet-700"
-                        : f === "reminders" && followUpReminders.length > 0 ? "text-amber-600 hover:text-amber-700" : "text-gray-500 hover:text-gray-700"
+                        : f === "reminders" && Object.keys(followUpReminders).length > 0 ? "text-amber-600 hover:text-amber-700" : "text-gray-500 hover:text-gray-700"
                     }`}>
                     {lbl} <span className={isActive ? "opacity-80" : "opacity-60"}>({cnt})</span>
                   </button>
@@ -453,7 +453,8 @@ export default function Dashboard() {
                       const soon = isApptSoon(appt);
                       return (
                         <div key={appt.id || appt._id}
-                          className={`px-5 py-3.5 hover:bg-gray-50 transition-colors ${soon ? "bg-amber-50/40" : ""}`}>
+                          onClick={() => window.location.href = "/appointments"}
+                          className={`px-5 py-3.5 hover:bg-violet-50/60 transition-colors cursor-pointer ${soon ? "bg-amber-50/40" : ""}`}>
                           <div className="flex items-start gap-3">
                             <div className="text-center min-w-[52px] shrink-0">
                               <p className="text-xs font-bold text-gray-800">{fmt12(appt.appointmentTime)}</p>
@@ -484,6 +485,7 @@ export default function Dashboard() {
                                 )}
                                 {appt.customerPhone && (
                                   <a href={`tel:${appt.customerPhone}`}
+                                    onClick={e => e.stopPropagation()}
                                     className="text-[10px] text-violet-500 font-semibold flex items-center gap-0.5 hover:underline">
                                     <Phone className="w-2.5 h-2.5" />{appt.customerPhone}
                                   </a>
