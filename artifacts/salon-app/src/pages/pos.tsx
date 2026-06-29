@@ -42,13 +42,42 @@ function StaffPicker({ staff, value, onChange, placeholder }: {
   placeholder: string;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [dropStyle, setDropStyle] = useState<React.CSSProperties>({});
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
   const selected = staff.find((s: any) => (s.id || s._id) === value);
 
+  const openDropdown = () => {
+    if (!btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const dropH = Math.min(220, staff.length * 40 + 56);
+    const openUp = spaceBelow < dropH + 8;
+    setDropStyle({
+      position: "fixed",
+      zIndex: 9999,
+      left: rect.left,
+      width: Math.max(192, rect.width),
+      ...(openUp
+        ? { bottom: window.innerHeight - rect.top + 4 }
+        : { top: rect.bottom + 4 }),
+    });
+    setOpen(v => !v);
+  };
+
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
+    const close = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node) &&
+          btnRef.current && !btnRef.current.contains(e.target as Node))
+        setOpen(false);
+    };
+    const onScroll = () => setOpen(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("scroll", onScroll, true);
+    };
   }, []);
 
   const genderStyle = (s: any, picked: boolean) => {
@@ -64,8 +93,8 @@ function StaffPicker({ staff, value, onChange, placeholder }: {
   };
 
   return (
-    <div className="relative flex-1 min-w-0" ref={ref}>
-      <button type="button" onClick={() => setOpen(v => !v)}
+    <div className="flex-1 min-w-0">
+      <button ref={btnRef} type="button" onClick={openDropdown}
         className="w-full flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors"
         style={selected ? genderStyle(selected, true) : { background: "hsl(var(--sidebar))", color: "rgba(255,255,255,0.5)", border: "1.5px solid transparent" }}>
         {selected ? (
@@ -79,7 +108,8 @@ function StaffPicker({ staff, value, onChange, placeholder }: {
         <ChevronDown className="w-3 h-3 ml-auto shrink-0 opacity-60" />
       </button>
       {open && (
-        <div className="absolute top-full mt-1 left-0 z-50 w-48 rounded-xl shadow-2xl overflow-hidden border border-sidebar-border bg-sidebar-accent">
+        <div ref={dropRef} style={dropStyle}
+          className="rounded-xl shadow-2xl overflow-hidden border border-sidebar-border bg-sidebar-accent">
           <button type="button"
             onClick={() => { onChange(""); setOpen(false); }}
             className="w-full text-left px-3 py-2 text-xs text-white/50 hover:bg-sidebar/60 transition-colors border-b border-sidebar-border">
