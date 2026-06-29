@@ -65,8 +65,21 @@ router.get("/reports/analytics", async (req, res) => {
     Staff.find(),
     Expense.find({ createdAt: { $gte: fromDate, $lte: toDate } }).lean(),
     Service.find().lean(),
-    Customer.countDocuments({ createdAt: { $gte: fromDate, $lte: toDate } }),
+    Customer.aggregate([
+      { $match: { createdAt: { $gte: fromDate, $lte: toDate } } },
+      { $group: { _id: { $ifNull: ["$gender", "unknown"] }, count: { $sum: 1 } } },
+    ]),
   ]);
+
+  // New customers gender breakdown (newCustomers is the aggregate result array)
+  const newCustAgg = newCustomers as unknown as { _id: string; count: number }[];
+  const newCustomerGenderMap: Record<string, number> = {};
+  for (const g of newCustAgg) {
+    newCustomerGenderMap[g._id || "unknown"] = g.count;
+  }
+  const newCustomersTotal = Object.values(newCustomerGenderMap).reduce((s, v) => s + v, 0);
+  const newCustomersMale = newCustomerGenderMap["male"] || 0;
+  const newCustomersFemale = newCustomerGenderMap["female"] || 0;
 
   // Build service ID → category lookup from actual Service documents
   const serviceCategoryMap: Record<string, string> = {};
@@ -226,7 +239,7 @@ router.get("/reports/analytics", async (req, res) => {
     .sort((a, b) => b.amount - a.amount);
 
   res.json({
-    summary: { totalRevenue, totalBills, avgTicket, totalCustomers, revGrowth, periodCustCount: periodCustIds.size, totalExpenses, netProfit, newCustomers, servicesRevenue, productsRevenue },
+    summary: { totalRevenue, totalBills, avgTicket, totalCustomers, revGrowth, periodCustCount: periodCustIds.size, totalExpenses, netProfit, newCustomers: newCustomersTotal, newCustomersMale, newCustomersFemale, servicesRevenue, productsRevenue },
     topServices,
     topProducts,
     staffPerformance,

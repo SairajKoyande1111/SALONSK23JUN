@@ -207,7 +207,7 @@ export default function Reports() {
     const kpiHtml = [
       { val: fmtRs(s.totalRevenue || 0), lbl: "Total Revenue", sub: `${s.totalBills || 0} bills · ${s.periodCustCount || 0} clients`, cls: "" },
       { val: fmtRs(s.avgTicket || 0), lbl: "Avg Ticket Size", sub: "per bill", cls: "" },
-      { val: String(s.newCustomers || 0), lbl: "New Customers Added", sub: "joined in this period", cls: "" },
+      { val: String(s.newCustomers || 0), lbl: "New Customers Added", sub: `♂ Male: ${s.newCustomersMale || 0}  ♀ Female: ${s.newCustomersFemale || 0}`, cls: "" },
       { val: `${fmtRs(s.servicesRevenue || 0)} / ${fmtRs(s.productsRevenue || 0)}`, lbl: "Services / Products Revenue", sub: "services · products", cls: "" },
     ].map(k => `<div class="kpi ${k.cls}"><div class="kpi-val">${k.val}</div><div class="kpi-lbl">${k.lbl}</div>${k.sub ? `<div class="kpi-sub">${k.sub}</div>` : ""}</div>`).join("");
 
@@ -429,9 +429,20 @@ export default function Reports() {
               <KPICard label="Avg Ticket Size" value={fmtRs(s.avgTicket || 0)}
                 sub="per bill"
                 icon={Receipt} accent="bg-blue-100 text-blue-700" />
-              <KPICard label="New Customers Added" value={String(s.newCustomers || 0)}
-                sub="joined in this period"
-                icon={Users} accent="bg-emerald-100 text-emerald-700" />
+              <div className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-4 shadow-sm">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-100 text-emerald-700">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900 leading-none tracking-tight">{s.newCustomers || 0}</p>
+                  <p className="text-xs font-medium text-gray-500 mt-1.5">New Customers Added</p>
+                  <div className="flex items-center gap-3 mt-1.5">
+                    <span className="text-[11px] text-blue-600 font-semibold">♂ {s.newCustomersMale || 0} Male</span>
+                    <span className="text-gray-300">·</span>
+                    <span className="text-[11px] text-pink-500 font-semibold">♀ {s.newCustomersFemale || 0} Female</span>
+                  </div>
+                </div>
+              </div>
               <div className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-4 shadow-sm">
                 <div className="flex items-start justify-between">
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-pink-100 text-pink-700">
