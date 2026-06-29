@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { Bill, Customer } from "../models/index.js";
+import { Bill, Customer, Appointment } from "../models/index.js";
 
 const router = Router();
 
@@ -30,28 +30,73 @@ async function generateBillNumber(): Promise<string> {
   return `${prefix}${String(nextSeq).padStart(2, "0")}`;
 }
 
-// GET /api/service-stylist-stats — top stylist per service based on bill history
+// GET /api/service-stylist-stats — top stylist per service (appointments + bills combined)
 router.get("/service-stylist-stats", async (_req, res) => {
-  const bills = await Bill.find({ "items.staffId": { $exists: true, $ne: null } });
   const stats: Record<string, Record<string, { staffName: string; count: number }>> = {};
-  for (const bill of bills) {
-    for (const item of (bill as any).items) {
-      if (item.type !== "service" || !item.staffId || !item.name) continue;
-      const svcName = item.name as string;
-      const staffId = item.staffId.toString();
-      const staffName = (item.staffName as string) || "";
-      if (!stats[svcName]) stats[svcName] = {};
-      if (!stats[svcName][staffId]) stats[svcName][staffId] = { staffName, count: 0 };
-      stats[svcName][staffId].count++;
+
+  function tally(svcName: string, staffId: string, staffName: string) {
+    if (!svcName || !staffId || !staffName) return;
+    if (!stats[svcName]) stats[svcName] = {};
+    if (!stats[svcName][staffId]) stats[svcName][staffId] = { staffName, count: 0 };
+    stats[svcName][staffId].count++;
+  }
+
+  // ── Source 1: Appointments (staffId + serviceName per appointment) ──
+  const appointments = await Appointment.find(
+    { staffId: { $exists: true, $ne: "" } },
+    { staffId: 1, staffName: 1, serviceName: 1, services: 1 }
+  ).lean();
+
+  for (const appt of appointments) {
+    const a = appt as any;
+    // Each appointment may have a primary serviceName or an array of services
+    if (Array.isArray(a.services) && a.services.length > 0) {
+      for (const svc of a.services) {
+        tally(svc.serviceName, a.staffId, a.staffName);
+      }
+    } else if (a.serviceName) {
+      tally(a.serviceName, a.staffId, a.staffName);
     }
   }
-  const result: Record<string, { staffId: string; staffName: string; count: number }> = {};
+
+  // ── Source 2: Bills (items with staffId of type service) ──
+  const bills = await Bill.find({ "items.staffId": { $exists: true, $ne: null } }).lean();
+  for (const bill of bills) {
+    for (const item of (bill as any).items || []) {
+      if (item.type !== "service" || !item.staffId || !item.name) continue;
+      tally(item.name, item.staffId.toString(), item.staffName || "");
+    }
+  }
+
+  // ── Also aggregate counts by base service name (before " — " separator) ──
+  // Appointments store full variant names like "HAIRCUT (Male) — Hair Cut Men"
+  // but POS service cards use only the parent name "HAIRCUT (Male)".
+  const baseStats: Record<string, Record<string, { staffName: string; count: number }>> = {};
   for (const [svcName, staffMap] of Object.entries(stats)) {
+    const baseName = svcName.includes(" — ") ? svcName.split(" — ")[0].trim() : svcName.trim();
+    if (!baseStats[baseName]) baseStats[baseName] = {};
+    for (const [staffId, { staffName, count }] of Object.entries(staffMap)) {
+      if (!baseStats[baseName][staffId]) baseStats[baseName][staffId] = { staffName, count: 0 };
+      baseStats[baseName][staffId].count += count;
+    }
+  }
+
+  // ── Pick top stylist per service (both full-variant and base name keys) ──
+  const result: Record<string, { staffId: string; staffName: string; count: number }> = {};
+  const pickTop = (staffMap: Record<string, { staffName: string; count: number }>) => {
     let topStaffId = "", topStaffName = "", topCount = 0;
     for (const [staffId, { staffName, count }] of Object.entries(staffMap)) {
       if (count > topCount) { topCount = count; topStaffId = staffId; topStaffName = staffName; }
     }
-    result[svcName] = { staffId: topStaffId, staffName: topStaffName, count: topCount };
+    return { staffId: topStaffId, staffName: topStaffName, count: topCount };
+  };
+  // Full variant keys (for exact matches)
+  for (const [svcName, staffMap] of Object.entries(stats)) {
+    result[svcName] = pickTop(staffMap);
+  }
+  // Base name keys (for POS card lookups — will overwrite if same key, which is fine)
+  for (const [baseName, staffMap] of Object.entries(baseStats)) {
+    result[baseName] = pickTop(staffMap);
   }
   res.json({ stats: result });
 });
