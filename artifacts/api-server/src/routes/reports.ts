@@ -59,7 +59,9 @@ router.get("/reports/analytics", async (req, res) => {
     else fromDate = startOfMonth(now);
   }
 
-  const [bills, totalCustomers, staffDocs, expenses, allServices, newCustomers, membershipDocs] = await Promise.all([
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+
+  const [bills, totalCustomers, staffDocs, expenses, allServices, newCustomers, membershipDocs, allTimeActiveCount] = await Promise.all([
     Bill.find({ createdAt: { $gte: fromDate, $lte: toDate } }).sort({ createdAt: 1 }),
     Customer.countDocuments(),
     Staff.find(),
@@ -70,6 +72,7 @@ router.get("/reports/analytics", async (req, res) => {
       { $group: { _id: { $ifNull: ["$gender", "unknown"] }, count: { $sum: 1 } } },
     ]),
     CustomerMembership.find({ createdAt: { $gte: fromDate, $lte: toDate } }).lean(),
+    CustomerMembership.countDocuments({ isActive: true, endDate: { $gte: todayStr } }),
   ]);
 
   // New customers gender breakdown (newCustomers is the aggregate result array)
@@ -249,7 +252,6 @@ router.get("/reports/analytics", async (req, res) => {
 
   // ── Membership Analytics ──
   const membershipArr = membershipDocs as any[];
-  const todayStr = format(new Date(), "yyyy-MM-dd");
   const membershipPlanMap: Record<string, { name: string; count: number; revenue: number; active: number; expired: number }> = {};
   for (const cm of membershipArr) {
     const key = cm.membershipName || "Unknown";
@@ -262,17 +264,23 @@ router.get("/reports/analytics", async (req, res) => {
   const membershipBreakdown = Object.values(membershipPlanMap).sort((a, b) => b.revenue - a.revenue);
   const membershipRevenue = membershipArr.reduce((s, cm) => s + (cm.price || 0), 0);
   const activeMembershipsInPeriod = membershipArr.filter(cm => cm.isActive && cm.endDate >= todayStr).length;
+  // Sort by endDate ascending (nearest expiry first) — active first, then expired
   const recentMemberships = [...membershipArr]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 20)
     .map(cm => ({
       customerName: cm.customerName || "—",
+      customerId: cm.customerId || "",
       plan: cm.membershipName || "—",
       price: cm.price || 0,
+      discountPercent: cm.discountPercent || 0,
       startDate: cm.startDate,
       endDate: cm.endDate,
-      isActive: cm.isActive && cm.endDate >= todayStr,
-    }));
+      isActive: !!(cm.isActive && cm.endDate >= todayStr),
+      createdAt: cm.createdAt,
+    }))
+    .sort((a, b) => {
+      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+      return a.endDate.localeCompare(b.endDate);
+    });
 
   res.json({
     summary: { totalRevenue, totalBills, avgTicket, totalCustomers, revGrowth, periodCustCount: periodCustIds.size, totalExpenses, netProfit, newCustomers: newCustomersTotal, newCustomersMale, newCustomersFemale, servicesRevenue, productsRevenue },
@@ -285,7 +293,7 @@ router.get("/reports/analytics", async (req, res) => {
     customerInsights: { totalCustomers, repeatCustomers, uniqueBilledCustomers, retentionRate: uniqueBilledCustomers > 0 ? Math.round((repeatCustomers / uniqueBilledCustomers) * 100) : 0 },
     categoryShare,
     expenseBreakdown,
-    membershipAnalytics: { total: membershipArr.length, revenue: membershipRevenue, activeCount: activeMembershipsInPeriod, breakdown: membershipBreakdown, recent: recentMemberships },
+    membershipAnalytics: { total: membershipArr.length, revenue: membershipRevenue, activeCount: activeMembershipsInPeriod, allTimeActive: allTimeActiveCount, breakdown: membershipBreakdown, recent: recentMemberships },
   });
 });
 

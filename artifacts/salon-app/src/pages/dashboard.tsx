@@ -25,7 +25,7 @@ const PM_COLORS: Record<string, string> = {
 };
 const PALETTE = ["#7c3aed", "#db2777", "#f59e0b", "#10b981", "#3b82f6", "#ea580c"];
 
-type ApptFilter = "today" | "week" | "month" | "all";
+type ApptFilter = "today" | "week" | "month" | "all" | "reminders";
 type StatusFilter = "all" | "scheduled" | "confirmed" | "completed" | "cancelled";
 
 function useStats() {
@@ -345,8 +345,8 @@ export default function Dashboard() {
               </a>
             </div>
 
-            {/* Follow-up reminder strip — shown for the active period */}
-            {periodFollowUps.length > 0 && (
+            {/* Follow-up reminder strip — shown for the active period, hidden on Reminders tab */}
+            {periodFollowUps.length > 0 && apptFilter !== "reminders" && (
               <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
                 <Bell className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
@@ -387,13 +387,22 @@ export default function Dashboard() {
 
             {/* Time tabs */}
             <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-3">
-              {(["today", "week", "month", "all"] as ApptFilter[]).map(f => {
-                const cnt = f === "today" ? todayAppts.length : f === "week" ? weekAppts.length : monthAppts.length;
-                const lbl = f === "today" ? "Today" : f === "week" ? "This Week" : f === "month" ? "This Month" : "All";
+              {(["today", "week", "month", "all", "reminders"] as ApptFilter[]).map(f => {
+                const cnt = f === "today" ? todayAppts.length
+                  : f === "week" ? weekAppts.length
+                  : f === "month" ? monthAppts.length
+                  : f === "reminders" ? followUpReminders.length
+                  : [...monthAppts, ...upcomingAppts.filter((a: any) => !monthAppts.find((m: any) => m.id === a.id))].length;
+                const lbl = f === "today" ? "Today" : f === "week" ? "This Week" : f === "month" ? "This Month" : f === "reminders" ? "🔔 Reminders" : "All";
+                const isActive = apptFilter === f;
                 return (
                   <button key={f} onClick={() => setApptFilter(f)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${apptFilter === f ? "bg-white shadow text-violet-700" : "text-gray-500 hover:text-gray-700"}`}>
-                    {lbl} <span className="opacity-60">({cnt})</span>
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      isActive
+                        ? f === "reminders" ? "bg-amber-500 shadow text-white" : "bg-white shadow text-violet-700"
+                        : f === "reminders" && followUpReminders.length > 0 ? "text-amber-600 hover:text-amber-700" : "text-gray-500 hover:text-gray-700"
+                    }`}>
+                    {lbl} <span className={isActive ? "opacity-80" : "opacity-60"}>({cnt})</span>
                   </button>
                 );
               })}
