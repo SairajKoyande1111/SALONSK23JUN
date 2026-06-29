@@ -60,16 +60,22 @@ function generatePrintReport(data: StaffData, fromDate: string, toDate: string) 
     ? `Up to ${fmtDateLong(toDate)}`
     : "All Time";
 
+  const logoUrl = `${window.location.origin}/thetouch-logo.jpg`;
+
+  // Services breakdown — 3 columns (no Avg per Service)
   const servicesRows = data.services.map(s => `
     <tr>
       <td>${s.name}</td>
       <td style="text-align:center">${s.count}</td>
       <td style="text-align:right">₹${fmt(s.revenue)}</td>
-      <td style="text-align:right">₹${s.count > 0 ? fmt(Math.round(s.revenue / s.count)) : 0}</td>
     </tr>
   `).join("");
 
+  // Invoice rows — Amount = sum of this staff's items in the bill (not full bill total)
+  let grandStaffTotal = 0;
   const invoiceRows = data.bills.map(bill => {
+    const staffBillTotal = bill.items.reduce((a, it) => a + it.total, 0);
+    grandStaffTotal += staffBillTotal;
     const itemRows = bill.items.map(it => `
       <tr style="background:#fafafa">
         <td colspan="2" style="padding:4px 12px 4px 28px;font-size:11px;color:#555">
@@ -84,7 +90,7 @@ function generatePrintReport(data: StaffData, fromDate: string, toDate: string) 
         <td style="font-weight:700;font-size:12px">${bill.billNumber}</td>
         <td>${bill.customerName}${bill.customerPhone ? ` · ${bill.customerPhone}` : ""}</td>
         <td style="text-align:center">${fmtDate(bill.date)} · <span style="text-transform:uppercase;font-size:10px">${bill.paymentMethod || ""}</span></td>
-        <td style="text-align:right;font-weight:700">₹${fmt(bill.billGrandTotal)}</td>
+        <td style="text-align:right;font-weight:700">₹${fmt(staffBillTotal)}</td>
       </tr>
       ${itemRows}
       <tr><td colspan="4" style="padding:0;height:2px;background:#e5e7eb"></td></tr>
@@ -103,6 +109,8 @@ function generatePrintReport(data: StaffData, fromDate: string, toDate: string) 
 
   /* Header */
   .salon-header { display:flex; align-items:center; justify-content:space-between; border-bottom: 3px solid #5b21b6; padding-bottom: 16px; margin-bottom: 24px; }
+  .logo-wrap { display:flex; align-items:center; gap:12px; }
+  .logo-img { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; }
   .salon-name { font-size: 24px; font-weight: 900; color: #5b21b6; letter-spacing: 1px; }
   .salon-sub { font-size: 10px; color: #7c3aed; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
   .report-meta { text-align: right; }
@@ -110,7 +118,7 @@ function generatePrintReport(data: StaffData, fromDate: string, toDate: string) 
   .report-meta strong { color: #1f1f1f; }
 
   /* Staff profile */
-  .staff-section { background: #f5f0ff; border: 1.5px solid #ddd6fe; border-radius: 12px; padding: 18px 22px; margin-bottom: 24px; display:flex; justify-content:space-between; align-items:flex-start; }
+  .staff-section { background: #f5f0ff; border: 1.5px solid #ddd6fe; border-radius: 12px; padding: 18px 22px; margin-bottom: 24px; }
   .staff-avatar { width: 56px; height: 56px; border-radius: 12px; background: linear-gradient(135deg,#7c3aed,#5b21b6); color:#fff; font-size:20px; font-weight:900; display:flex; align-items:center; justify-content:center; margin-right: 16px; flex-shrink:0; }
   .staff-info { flex:1; }
   .staff-name { font-size: 20px; font-weight: 800; color: #1f1f1f; }
@@ -141,7 +149,7 @@ function generatePrintReport(data: StaffData, fromDate: string, toDate: string) 
   /* Tables */
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   thead th { background: #5b21b6; color: #fff; padding: 9px 12px; text-align: left; font-size: 10px; letter-spacing: .5px; text-transform: uppercase; }
-  thead th:not(:first-child) { text-align: center; }
+  thead th:nth-child(2) { text-align: center; }
   thead th:last-child { text-align: right; }
   tbody tr:nth-child(even) { background: #faf5ff; }
   tbody td { padding: 9px 12px; border-bottom: 1px solid #f3e8ff; }
@@ -169,9 +177,12 @@ function generatePrintReport(data: StaffData, fromDate: string, toDate: string) 
 
   <!-- Salon Header -->
   <div class="salon-header">
-    <div>
-      <div class="salon-name">AT SMART SALON</div>
-      <div class="salon-sub">Salon Management Software</div>
+    <div class="logo-wrap">
+      <img src="${logoUrl}" alt="Salon Logo" class="logo-img" />
+      <div>
+        <div class="salon-name">AT SMART SALON</div>
+        <div class="salon-sub">Salon Management Software</div>
+      </div>
     </div>
     <div class="report-meta">
       <p><strong>Staff Performance Report</strong></p>
@@ -220,7 +231,6 @@ function generatePrintReport(data: StaffData, fromDate: string, toDate: string) 
         <th>Service / Product</th>
         <th>Count</th>
         <th>Total Revenue</th>
-        <th>Avg per Service</th>
       </tr>
     </thead>
     <tbody>${servicesRows}</tbody>
@@ -228,7 +238,7 @@ function generatePrintReport(data: StaffData, fromDate: string, toDate: string) 
       <tr>
         <td>TOTAL</td>
         <td style="text-align:center">${data.services.reduce((a, s) => a + s.count, 0)}</td>
-        <td colspan="2">₹${fmt(data.totalRevenue)}</td>
+        <td>₹${fmt(data.totalRevenue)}</td>
       </tr>
     </tfoot>
   </table>
@@ -241,14 +251,14 @@ function generatePrintReport(data: StaffData, fromDate: string, toDate: string) 
         <th>Invoice #</th>
         <th>Customer</th>
         <th>Date &amp; Payment</th>
-        <th>Amount</th>
+        <th>Staff Revenue</th>
       </tr>
     </thead>
     <tbody>${invoiceRows}</tbody>
     <tfoot>
       <tr>
         <td colspan="3">TOTAL (${data.bills.length} invoices)</td>
-        <td>₹${fmt(data.bills.reduce((a, b) => a + b.billGrandTotal, 0))}</td>
+        <td>₹${fmt(grandStaffTotal)}</td>
       </tr>
     </tfoot>
   </table>
