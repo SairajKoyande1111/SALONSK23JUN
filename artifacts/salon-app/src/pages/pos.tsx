@@ -34,6 +34,78 @@ const PAYMENT_METHODS = [
 
 const poppins = { fontFamily: "'Poppins', sans-serif" } as const;
 
+// ── Coloured Staff Picker ──────────────────────────────────
+function StaffPicker({ staff, value, onChange, placeholder }: {
+  staff: any[];
+  value: string;
+  onChange: (id: string) => void;
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = staff.find((s: any) => (s.id || s._id) === value);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  const genderStyle = (s: any, picked: boolean) => {
+    if (s.gender === "male") return picked
+      ? { background: "#1d4ed8", color: "#fff", border: "1.5px solid #1d4ed8" }
+      : { background: "#dbeafe", color: "#1d4ed8", border: "1.5px solid #93c5fd" };
+    if (s.gender === "female") return picked
+      ? { background: "#db2777", color: "#fff", border: "1.5px solid #db2777" }
+      : { background: "#fce7f3", color: "#be185d", border: "1.5px solid #f9a8d4" };
+    return picked
+      ? { background: "#7c3aed", color: "#fff", border: "1.5px solid #7c3aed" }
+      : { background: "hsl(var(--sidebar))", color: "rgba(255,255,255,0.7)", border: "1.5px solid transparent" };
+  };
+
+  return (
+    <div className="relative flex-1 min-w-0" ref={ref}>
+      <button type="button" onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors"
+        style={selected ? genderStyle(selected, true) : { background: "hsl(var(--sidebar))", color: "rgba(255,255,255,0.5)", border: "1.5px solid transparent" }}>
+        {selected ? (
+          <>
+            <span>{selected.gender === "male" ? "♂" : selected.gender === "female" ? "♀" : "👤"}</span>
+            <span className="truncate font-semibold">{selected.name}</span>
+          </>
+        ) : (
+          <span className="truncate">{placeholder}</span>
+        )}
+        <ChevronDown className="w-3 h-3 ml-auto shrink-0 opacity-60" />
+      </button>
+      {open && (
+        <div className="absolute bottom-full mb-1 left-0 z-50 w-48 rounded-xl shadow-2xl overflow-hidden border border-sidebar-border bg-sidebar-accent">
+          <button type="button"
+            onClick={() => { onChange(""); setOpen(false); }}
+            className="w-full text-left px-3 py-2 text-xs text-white/50 hover:bg-sidebar/60 transition-colors border-b border-sidebar-border">
+            — {placeholder}
+          </button>
+          <div className="p-2 flex flex-wrap gap-1.5 max-h-44 overflow-y-auto">
+            {staff.map((s: any) => {
+              const sid = s.id || s._id;
+              const picked = value === sid;
+              return (
+                <button key={sid} type="button"
+                  onClick={() => { onChange(sid); setOpen(false); }}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-all"
+                  style={genderStyle(s, picked)}>
+                  <span>{s.gender === "male" ? "♂" : s.gender === "female" ? "♀" : ""}</span>
+                  <span>{s.name.split(" ")[0]}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function POS() {
   const { toast } = useToast();
   const { data: servicesData } = useListServices();
@@ -625,6 +697,7 @@ export default function POS() {
                     : `₹${basePrice.toLocaleString("en-IN")}`;
                   const inCart = cart.filter(c => c.itemId === id).length;
 
+                  const topStylist = activeTab === "services" ? stylistStats[item.name] : null;
                   return (
                     <button key={id} onClick={() => handleItemClick(item)}
                       className="relative text-left p-4 rounded-2xl bg-card transition-all active:scale-95 hover:shadow-md"
@@ -638,7 +711,13 @@ export default function POS() {
                         </span>
                       )}
                       <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5 text-muted-foreground">{item.category}</p>
-                      <p className="font-bold text-sm leading-snug mb-3 pr-5 line-clamp-2 text-foreground">{item.name}</p>
+                      <p className="font-bold text-sm leading-snug mb-2 pr-5 line-clamp-2 text-foreground">{item.name}</p>
+                      {topStylist?.staffName && (
+                        <div className="flex items-center gap-1 mb-2">
+                          <span className="text-amber-400 text-[10px]">★</span>
+                          <span className="text-[10px] font-semibold text-amber-700 truncate">{topStylist.staffName}</span>
+                        </div>
+                      )}
                       <div className="flex items-end justify-between">
                         <p className="text-base font-extrabold text-primary">{displayPrice}</p>
                         {variants.length > 0 && (
@@ -806,25 +885,13 @@ export default function POS() {
                         <Crown className="w-3 h-3" /> {item.durationMonths ? `${item.durationMonths} months` : "Membership plan"}
                       </span>
                     )}
-                    {item.type === "service" && (
-                      <select value={item.staffId || ""} onChange={e => updateCartItem(item.uid, "staffId", e.target.value)}
-                        className="flex-1 min-w-0 text-xs rounded-lg px-2 py-1.5 focus:outline-none border-0 bg-sidebar text-white">
-                        <option value="">Assign staff</option>
-                        {staff.map((s: any) => {
-                          const genderIcon = s.gender === "male" ? "♂ " : s.gender === "female" ? "♀ " : "";
-                          return <option key={s.id || s._id} value={s.id || s._id}>{genderIcon}{s.name}</option>;
-                        })}
-                      </select>
-                    )}
-                    {item.type === "product" && (
-                      <select value={item.staffId || ""} onChange={e => updateCartItem(item.uid, "staffId", e.target.value)}
-                        className="flex-1 min-w-0 text-xs rounded-lg px-2 py-1.5 focus:outline-none border-0 bg-sidebar text-white">
-                        <option value="">Sold by (staff)</option>
-                        {staff.map((s: any) => {
-                          const genderIcon = s.gender === "male" ? "♂ " : s.gender === "female" ? "♀ " : "";
-                          return <option key={s.id || s._id} value={s.id || s._id}>{genderIcon}{s.name}</option>;
-                        })}
-                      </select>
+                    {(item.type === "service" || item.type === "product") && (
+                      <StaffPicker
+                        staff={staff}
+                        value={item.staffId || ""}
+                        onChange={sid => updateCartItem(item.uid, "staffId", sid)}
+                        placeholder={item.type === "service" ? "Assign staff" : "Sold by"}
+                      />
                     )}
                     {/* Upgradation toggle — appears on any non-membership item */}
                     {item.type !== "membership" && (
