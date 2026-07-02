@@ -1538,58 +1538,24 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
 
   return (
     <div className="flex flex-col overflow-hidden rounded-2xl border border-border/50 bg-card flex-1">
-      {/* ── Sticky header: corner + time labels ── */}
-      <div className="flex shrink-0 border-b-2 border-border/50 bg-muted/30 sticky top-0 z-20">
-        {/* Corner cell */}
-        <div
-          style={{ width: NAME_COL_W, minWidth: NAME_COL_W }}
-          className="shrink-0 border-r border-border/40 flex items-center justify-center bg-muted/30"
-        >
-          <CalendarIcon className="w-4 h-4 text-muted-foreground" />
-        </div>
-        {/* Time label cells — one per 30-min slot, label only on hour */}
-        <div className="flex overflow-hidden" style={{ width: totalTimeWidth }}>
-          {slots.map(min => {
-            const h = Math.floor(min / 60);
-            const m = min % 60;
-            const isHour = m === 0;
-            return (
-              <div key={min}
-                style={{ width: SLOT_W, minWidth: SLOT_W }}
-                className={`flex items-center justify-start pl-2 py-2.5 shrink-0 border-r
-                  ${isHour ? "border-border/50" : "border-border/20"}`}>
-                {isHour && (
-                  <span className="whitespace-nowrap text-[12px] font-semibold text-slate-600 leading-tight">
-                    {format(new Date(2020, 0, 1, h, m), "h a")}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── Scrollable body ── */}
+      {/* ── Single scrollable area: header + body scroll together horizontally ── */}
       <div className="overflow-auto flex-1 bg-white">
         {/*
-          Inner container fills both the min content width AND the full scroll
-          height so the background grid always covers the empty area below rows.
-          The backgroundImage draws:
-            • a solid muted fill over the name column (layer 1)
-            • thin vertical lines every SLOT_W px for 30-min slots (layer 2)
-            • slightly stronger lines every SLOT_W*2 px for hour marks (layer 3)
+          Inner container is wider than the viewport (forces horizontal scroll).
+          min-height: 100% ensures the bg grid fills the full visible height.
+          backgroundImage layers:
+            • solid muted fill for the name column (layer 1)
+            • stronger lines every hour / SLOT_W*2 (layer 2)
+            • faint tick lines every 30 min / SLOT_W (layer 3)
         */}
         <div
-          className="relative flex flex-col"
+          className="flex flex-col"
           style={{
             minWidth: NAME_COL_W + totalTimeWidth,
-            height: "100%",
+            minHeight: "100%",
             backgroundImage: [
-              // Layer 1 — name column solid bg (covers grid lines in that area)
               `linear-gradient(to right, rgb(249 250 251) ${NAME_COL_W}px, transparent ${NAME_COL_W}px)`,
-              // Layer 2 — hour dividers (every 2 slots = SLOT_W*2)
               `repeating-linear-gradient(to right, transparent 0px, transparent ${SLOT_W * 2 - 1}px, rgba(0,0,0,0.09) ${SLOT_W * 2 - 1}px, rgba(0,0,0,0.09) ${SLOT_W * 2}px)`,
-              // Layer 3 — 30-min tick lines (every slot)
               `repeating-linear-gradient(to right, transparent 0px, transparent ${SLOT_W - 1}px, rgba(0,0,0,0.04) ${SLOT_W - 1}px, rgba(0,0,0,0.04) ${SLOT_W}px)`,
             ].join(", "),
             backgroundPosition: `0 0, ${NAME_COL_W}px 0, ${NAME_COL_W}px 0`,
@@ -1597,6 +1563,38 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
             backgroundSize: `100% 100%, ${SLOT_W * 2}px 100%, ${SLOT_W}px 100%`,
           }}
         >
+          {/* ── Time header — sticky to the TOP of the scroll container ── */}
+          <div className="flex shrink-0 border-b-2 border-border/50 bg-muted/30 sticky top-0 z-20">
+            {/* Corner cell */}
+            <div
+              style={{ width: NAME_COL_W, minWidth: NAME_COL_W }}
+              className="shrink-0 border-r border-border/40 flex items-center justify-center bg-muted/30 sticky left-0 z-30"
+            >
+              <CalendarIcon className="w-4 h-4 text-muted-foreground" />
+            </div>
+            {/* Time label cells — one per 30-min slot, label only on hour */}
+            {slots.map(min => {
+              const h = Math.floor(min / 60);
+              const m = min % 60;
+              const isHour = m === 0;
+              return (
+                <div key={min}
+                  style={{ width: SLOT_W, minWidth: SLOT_W }}
+                  className={`flex items-center justify-start pl-2 py-2.5 shrink-0 border-r
+                    ${isHour ? "border-border/50" : "border-border/20"}`}>
+                  {isHour && (
+                    <span className="whitespace-nowrap text-[12px] font-semibold text-slate-600 leading-tight">
+                      {format(new Date(2020, 0, 1, h, m), "h a")}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ── Staff rows wrapper — fills remaining height ── */}
+          <div className="relative flex flex-col flex-1">
+
           {/* Vertical "now" line spanning all staff rows */}
           {showNowLine && (
             <div
@@ -1689,6 +1687,7 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
               </div>
             );
           })}
+          </div>
         </div>
       </div>
     </div>
