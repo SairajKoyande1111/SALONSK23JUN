@@ -50,7 +50,7 @@ const TOTAL_SLOTS = (CAL_END - CAL_START) / 30; // 24 slots
 // Transposed (horizontal) grid constants — times across top, staff down left
 const SLOT_W      = 72;   // px per 30-min time slot column
 const NAME_COL_W  = 140;  // px for staff name column on the left
-const ROW_H       = 88;   // px per staff row
+const ROW_H       = 72;   // px per staff row
 
 // Zenotti-style card colours — very light pastels, subtle borders
 const calBg: Record<string, string> = {
@@ -1570,24 +1570,47 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
       </div>
 
       {/* ── Scrollable body ── */}
-      <div className="overflow-auto flex-1">
-        {/* Inner container: fixed total width so horizontal scroll works */}
-        <div style={{ minWidth: NAME_COL_W + totalTimeWidth }} className="relative">
-
+      <div className="overflow-auto flex-1 bg-white">
+        {/*
+          Inner container fills both the min content width AND the full scroll
+          height so the background grid always covers the empty area below rows.
+          The backgroundImage draws:
+            • a solid muted fill over the name column (layer 1)
+            • thin vertical lines every SLOT_W px for 30-min slots (layer 2)
+            • slightly stronger lines every SLOT_W*2 px for hour marks (layer 3)
+        */}
+        <div
+          className="relative"
+          style={{
+            minWidth: NAME_COL_W + totalTimeWidth,
+            minHeight: "100%",
+            backgroundImage: [
+              // Layer 1 — name column solid bg (covers grid lines in that area)
+              `linear-gradient(to right, rgb(249 250 251) ${NAME_COL_W}px, transparent ${NAME_COL_W}px)`,
+              // Layer 2 — hour dividers (every 2 slots = SLOT_W*2)
+              `repeating-linear-gradient(to right, transparent 0px, transparent ${SLOT_W * 2 - 1}px, rgba(0,0,0,0.09) ${SLOT_W * 2 - 1}px, rgba(0,0,0,0.09) ${SLOT_W * 2}px)`,
+              // Layer 3 — 30-min tick lines (every slot)
+              `repeating-linear-gradient(to right, transparent 0px, transparent ${SLOT_W - 1}px, rgba(0,0,0,0.04) ${SLOT_W - 1}px, rgba(0,0,0,0.04) ${SLOT_W}px)`,
+            ].join(", "),
+            backgroundPosition: `0 0, ${NAME_COL_W}px 0, ${NAME_COL_W}px 0`,
+            backgroundRepeat: "no-repeat, repeat, repeat",
+            backgroundSize: `100% 100%, ${SLOT_W * 2}px 100%, ${SLOT_W}px 100%`,
+          }}
+        >
           {/* Vertical "now" line spanning all staff rows */}
           {showNowLine && (
             <div
-              className="absolute top-0 bottom-0 z-20 pointer-events-none flex items-stretch"
-              style={{ left: NAME_COL_W + nowLeft }}
+              className="absolute top-0 bottom-0 z-20 pointer-events-none"
+              style={{ left: NAME_COL_W + nowLeft, width: 2 }}
             >
-              <div className="w-px flex-1 bg-red-500/70 relative">
+              <div className="w-full h-full bg-red-500/70 relative">
                 <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-red-500 rounded-full shadow-sm" />
               </div>
             </div>
           )}
 
           {/* One row per staff member */}
-          {staff.map(s => {
+          {staff.map((s, idx) => {
             const staffId = s.id || s._id;
             const staffAppts = appointments.filter(a => {
               const aId = a.staffId?.toString?.() || a.staffId;
@@ -1599,13 +1622,18 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
               return m >= CAL_START && m < CAL_END;
             });
             const overlapLayout = layoutOverlappingHorizontal(visibleAppts);
+            const isLast = idx === staff.length - 1;
 
             return (
-              <div key={staffId} className="flex border-b border-border/20" style={{ minHeight: ROW_H }}>
+              <div
+                key={staffId}
+                className={`flex ${isLast ? "" : "border-b border-slate-200"}`}
+                style={{ height: ROW_H }}
+              >
                 {/* Staff name cell — sticky on the left */}
                 <div
                   style={{ width: NAME_COL_W, minWidth: NAME_COL_W }}
-                  className="shrink-0 border-r border-border/40 bg-muted/20 flex flex-col justify-center px-3 py-2 sticky left-0 z-10"
+                  className="shrink-0 border-r border-slate-200 bg-gray-50 flex flex-col justify-center px-3 sticky left-0 z-10"
                 >
                   <p className="text-sm font-bold text-foreground leading-tight truncate">{s.name}</p>
                   <span className="text-[11px] text-muted-foreground font-medium mt-0.5">
@@ -1615,16 +1643,14 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
 
                 {/* Time slots for this staff — horizontal track */}
                 <div className="relative flex shrink-0" style={{ width: totalTimeWidth, height: ROW_H }}>
-                  {/* Clickable slot cells */}
+                  {/* Clickable slot cells (transparent so background grid shows through) */}
                   {slots.map(min => {
                     const isHighlighted = highlightedSlot?.staffId === staffId && highlightedSlot?.min === min;
-                    const isHour = min % 60 === 0;
                     return (
                       <div key={min}
                         style={{ width: SLOT_W, minWidth: SLOT_W, height: ROW_H }}
                         className={`cursor-pointer transition-colors group relative shrink-0
-                          ${isHour ? "border-r border-border/40" : "border-r border-dashed border-border/20"}
-                          ${isHighlighted ? "bg-primary/15 ring-1 ring-inset ring-primary/40" : "hover:bg-primary/5"}`}
+                          ${isHighlighted ? "bg-primary/15 ring-1 ring-inset ring-primary/30" : "hover:bg-primary/5"}`}
                         onClick={() => handleSlotClick(staffId, min)}
                       >
                         {isHighlighted && (
