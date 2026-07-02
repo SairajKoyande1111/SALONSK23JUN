@@ -1580,10 +1580,10 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
             • slightly stronger lines every SLOT_W*2 px for hour marks (layer 3)
         */}
         <div
-          className="relative"
+          className="relative flex flex-col"
           style={{
             minWidth: NAME_COL_W + totalTimeWidth,
-            minHeight: "100%",
+            height: "100%",
             backgroundImage: [
               // Layer 1 — name column solid bg (covers grid lines in that area)
               `linear-gradient(to right, rgb(249 250 251) ${NAME_COL_W}px, transparent ${NAME_COL_W}px)`,
@@ -1627,8 +1627,7 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
             return (
               <div
                 key={staffId}
-                className={`flex ${isLast ? "" : "border-b border-slate-200"}`}
-                style={{ height: ROW_H }}
+                className={`flex flex-1 min-h-0 ${isLast ? "" : "border-b border-slate-200"}`}
               >
                 {/* Staff name cell — sticky on the left */}
                 <div
@@ -1642,14 +1641,14 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
                 </div>
 
                 {/* Time slots for this staff — horizontal track */}
-                <div className="relative flex shrink-0" style={{ width: totalTimeWidth, height: ROW_H }}>
+                <div className="relative flex shrink-0 flex-1" style={{ width: totalTimeWidth }}>
                   {/* Clickable slot cells (transparent so background grid shows through) */}
                   {slots.map(min => {
                     const isHighlighted = highlightedSlot?.staffId === staffId && highlightedSlot?.min === min;
                     return (
                       <div key={min}
-                        style={{ width: SLOT_W, minWidth: SLOT_W, height: ROW_H }}
-                        className={`cursor-pointer transition-colors group relative shrink-0
+                        style={{ width: SLOT_W, minWidth: SLOT_W }}
+                        className={`cursor-pointer transition-colors group relative shrink-0 h-full
                           ${isHighlighted ? "bg-primary/15 ring-1 ring-inset ring-primary/30" : "hover:bg-primary/5"}`}
                         onClick={() => handleSlotClick(staffId, min)}
                       >
