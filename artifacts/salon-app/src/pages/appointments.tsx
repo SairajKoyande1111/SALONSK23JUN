@@ -41,11 +41,16 @@ const legendDotColors: Record<string, string> = {
 };
 
 // ─── Calendar view constants ──────────────────────────────────────────────────
-const SLOT_HEIGHT = 56;       // px per 30-min slot
-const TIME_COL_W = 88;        // px for the time label column
+const SLOT_HEIGHT = 56;       // px per 30-min slot (kept for compat)
+const TIME_COL_W = 88;        // px for the time label column (kept for compat)
 const CAL_START = 9 * 60;     // 9:00 AM in minutes from midnight
 const CAL_END   = 21 * 60;    // 9:00 PM in minutes from midnight
 const TOTAL_SLOTS = (CAL_END - CAL_START) / 30; // 24 slots
+
+// Transposed (horizontal) grid constants — times across top, staff down left
+const SLOT_W      = 72;   // px per 30-min time slot column
+const NAME_COL_W  = 140;  // px for staff name column on the left
+const ROW_H       = 88;   // px per staff row
 
 // Zenotti-style card colours — very light pastels, subtle borders
 const calBg: Record<string, string> = {
@@ -1233,6 +1238,36 @@ function layoutOverlappingAppts(appts: any[]): Map<string, { left: string; width
   return result;
 }
 
+// Horizontal variant — appointments share the same staff row, stack top-to-bottom
+function layoutOverlappingHorizontal(appts: any[]): Map<string, { top: string; height: string }> {
+  if (appts.length === 0) return new Map();
+  const sorted = [...appts].sort((a, b) => timeToMinutes(a.appointmentTime) - timeToMinutes(b.appointmentTime));
+
+  const colEndTimes: number[] = [];
+  const apptInfo: { id: string; col: number; startMin: number; endMin: number }[] = [];
+
+  for (const appt of sorted) {
+    const start = timeToMinutes(appt.appointmentTime);
+    const end   = start + (appt.duration || 30);
+    let col = colEndTimes.findIndex(e => e <= start);
+    if (col === -1) { col = colEndTimes.length; colEndTimes.push(end); }
+    else colEndTimes[col] = end;
+    apptInfo.push({ id: appt.id || appt._id, col, startMin: start, endMin: end });
+  }
+
+  const result = new Map<string, { top: string; height: string }>();
+  for (const item of apptInfo) {
+    const overlapping = apptInfo.filter(o => o.startMin < item.endMin && o.endMin > item.startMin);
+    const totalCols = Math.max(...overlapping.map(o => o.col)) + 1;
+    const pct = 100 / totalCols;
+    result.set(item.id, {
+      top:    `calc(${item.col * pct}% + 2px)`,
+      height: `calc(${pct}% - 4px)`,
+    });
+  }
+  return result;
+}
+
 // ─── Reminder Detail Modal ─────────────────────────────────────────────────────
 function ReminderDetailModal({ reminder, onClose, onBookNow }: {
   reminder: any; onClose: () => void; onBookNow?: () => void;
@@ -1393,7 +1428,62 @@ function CalendarApptBlock({ appt, top, height, colLeft, colWidth, onEdit, onDel
   );
 }
 
-// ─── Calendar Grid ────────────────────────────────────────────────────────────
+// ─── Horizontal Appointment Block (for transposed grid) ───────────────────────
+function HCalendarApptBlock({ appt, leftPx, widthPx, topStyle, heightStyle, onEdit, onDelete, onStatusChange, onView }: {
+  appt: any; leftPx: number; widthPx: number;
+  topStyle: string; heightStyle: string;
+  onEdit: (a: any) => void; onDelete: (a: any) => void;
+  onStatusChange: (id: string, status: string) => void;
+  onView: (a: any) => void;
+}) {
+  const [showMenu, setShowMenu] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const status = appt.status || "scheduled";
+  const id = appt.id || appt._id;
+  const endMin = timeToMinutes(appt.appointmentTime) + (appt.duration || 30);
+  const startTimeStr = appt.appointmentTime
+    ? format(new Date(2020, 0, 1, ...appt.appointmentTime.split(":").map(Number) as [number, number]), "h:mm a")
+    : "";
+  const endTimeStr = format(new Date(2020, 0, 1, Math.floor(endMin / 60), endMin % 60), "h:mm a");
+  const serviceName = appt.services?.length > 0
+    ? appt.services.map((s: any) => s.serviceName).join(", ")
+    : appt.serviceName || "";
+
+  return (
+    <div ref={ref}
+      className={`absolute rounded-lg border cursor-pointer shadow-sm hover:shadow-md hover:brightness-[0.97] transition-all z-[5] overflow-hidden ${calBg[status] || calBg.scheduled}`}
+      style={{ left: leftPx + 2, width: widthPx - 4, top: topStyle, height: heightStyle }}
+      onClick={() => { if (!showMenu) onView(appt); }}
+    >
+      <div className={`h-full px-2 pt-1 pb-1 flex flex-col overflow-hidden rounded-lg ${calTextColor[status] || calTextColor.scheduled}`}>
+        <p className={`text-[11px] font-semibold leading-tight truncate ${calTimeColor[status] || calTimeColor.scheduled}`}>
+          {startTimeStr}–{endTimeStr}
+        </p>
+        <p className="text-[13px] font-bold leading-tight truncate mt-0.5">
+          {appt.customerName || "Walk-in"}
+        </p>
+        {serviceName && (
+          <p className="text-[11px] leading-tight truncate opacity-70 mt-0.5">{serviceName}</p>
+        )}
+      </div>
+      <button
+        className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center rounded hover:bg-black/10 transition-colors z-10"
+        onClick={e => { e.stopPropagation(); setShowMenu(m => !m); }}
+      >
+        <MoreHorizontal className="w-3.5 h-3.5 opacity-60" />
+      </button>
+      {showMenu && (
+        <ContextMenuPortal
+          appt={appt} serviceName={serviceName} status={status} id={id}
+          onView={onView} onEdit={onEdit} onDelete={onDelete} onStatusChange={onStatusChange}
+          onClose={() => setShowMenu(false)} cardRef={ref}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Calendar Grid (transposed: staff rows on left, times across top) ─────────
 function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, onDelete, onStatusChange, onView, loading }: {
   appointments: any[]; staff: any[]; selectedDate: Date;
   onSlotClick: (staffId: string, minutes: number) => void;
@@ -1412,9 +1502,11 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
 
   const isSelectedToday = isSameDay(selectedDate, new Date());
   const showNowLine = isSelectedToday && nowMin >= CAL_START && nowMin <= CAL_END;
-  const nowTop = ((nowMin - CAL_START) / 30) * SLOT_HEIGHT;
+  // Horizontal position of "now" line within the scrollable time area
+  const nowLeft = ((nowMin - CAL_START) / 30) * SLOT_W;
 
   const slots = useMemo(() => Array.from({ length: TOTAL_SLOTS }, (_, i) => CAL_START + i * 30), []);
+  const totalTimeWidth = TOTAL_SLOTS * SLOT_W;
 
   const handleSlotClick = (staffId: string, min: number) => {
     setHighlightedSlot({ staffId, min });
@@ -1446,119 +1538,129 @@ function CalendarGrid({ appointments, staff, selectedDate, onSlotClick, onEdit, 
 
   return (
     <div className="flex flex-col overflow-hidden rounded-2xl border border-border/50 bg-card flex-1">
-      {/* Staff header row */}
-      <div className="flex border-b-2 border-border/50 bg-muted/30 shrink-0">
-        <div style={{ width: TIME_COL_W, minWidth: TIME_COL_W }} className="shrink-0 border-r border-border/30 flex items-center justify-center">
+      {/* ── Sticky header: corner + time labels ── */}
+      <div className="flex shrink-0 border-b-2 border-border/50 bg-muted/30 sticky top-0 z-20">
+        {/* Corner cell */}
+        <div
+          style={{ width: NAME_COL_W, minWidth: NAME_COL_W }}
+          className="shrink-0 border-r border-border/40 flex items-center justify-center bg-muted/30"
+        >
           <CalendarIcon className="w-4 h-4 text-muted-foreground" />
         </div>
-        {staff.map(s => {
-          const id = s.id || s._id;
-          const count = appointments.filter(a => {
-            const aId = a.staffId?.toString?.() || a.staffId;
-            return aId === id?.toString();
-          }).length;
-          return (
-            <div key={id}
-              className="flex-1 min-w-[140px] py-3 px-3 border-r border-border/30 flex flex-col items-start gap-0.5">
-              <p className="text-sm font-bold text-foreground leading-tight">{s.name}</p>
-              <span className="text-[11px] text-muted-foreground font-medium">
-                {count > 0 ? `${count} appointment${count !== 1 ? "s" : ""}` : "No appointments"}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Scrollable grid */}
-      <div className="flex overflow-auto flex-1">
-        {/* Time labels column — shows every 30-min slot */}
-        <div style={{ width: TIME_COL_W, minWidth: TIME_COL_W }} className="shrink-0 border-r border-border/40 bg-gray-50/60">
+        {/* Time label cells — one per 30-min slot, label only on hour */}
+        <div className="flex overflow-hidden" style={{ width: totalTimeWidth }}>
           {slots.map(min => {
             const h = Math.floor(min / 60);
             const m = min % 60;
             const isHour = m === 0;
             return (
-              <div key={min} style={{ height: SLOT_HEIGHT }}
-                className={`flex items-start justify-end pr-3 pt-1.5 ${isHour ? "border-b border-border/50" : "border-b border-transparent"}`}>
+              <div key={min}
+                style={{ width: SLOT_W, minWidth: SLOT_W }}
+                className={`flex items-center justify-start pl-2 py-2.5 shrink-0 border-r
+                  ${isHour ? "border-border/50" : "border-border/20"}`}>
                 {isHour && (
-                  <span className="whitespace-nowrap leading-tight text-[13px] font-semibold text-slate-600">
-                    {format(new Date(2020, 0, 1, h, m), "h:mm a")}
+                  <span className="whitespace-nowrap text-[12px] font-semibold text-slate-600 leading-tight">
+                    {format(new Date(2020, 0, 1, h, m), "h a")}
                   </span>
                 )}
               </div>
             );
           })}
         </div>
+      </div>
 
-        {/* Staff columns + time indicator overlay */}
-        <div className="flex flex-1 relative">
-          {/* Current time line */}
+      {/* ── Scrollable body ── */}
+      <div className="overflow-auto flex-1">
+        {/* Inner container: fixed total width so horizontal scroll works */}
+        <div style={{ minWidth: NAME_COL_W + totalTimeWidth }} className="relative">
+
+          {/* Vertical "now" line spanning all staff rows */}
           {showNowLine && (
-            <div className="absolute left-0 right-0 z-20 flex items-center pointer-events-none" style={{ top: nowTop }}>
-              <div className="w-2.5 h-2.5 bg-red-500 rounded-full shrink-0 -translate-x-1.5 shadow-sm" />
-              <div className="flex-1 h-0.5 bg-red-500/70" />
+            <div
+              className="absolute top-0 bottom-0 z-20 pointer-events-none flex items-stretch"
+              style={{ left: NAME_COL_W + nowLeft }}
+            >
+              <div className="w-px flex-1 bg-red-500/70 relative">
+                <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-red-500 rounded-full shadow-sm" />
+              </div>
             </div>
           )}
 
-          {/* Individual staff columns */}
+          {/* One row per staff member */}
           {staff.map(s => {
             const staffId = s.id || s._id;
             const staffAppts = appointments.filter(a => {
               const aId = a.staffId?.toString?.() || a.staffId;
               return aId === staffId?.toString();
             });
+            const count = staffAppts.length;
+            const visibleAppts = staffAppts.filter(a => {
+              const m = timeToMinutes(a.appointmentTime);
+              return m >= CAL_START && m < CAL_END;
+            });
+            const overlapLayout = layoutOverlappingHorizontal(visibleAppts);
 
             return (
-              <div key={staffId} className="flex-1 min-w-[140px] border-r border-border/20 relative overflow-visible">
-                {/* Slot background cells */}
-                {slots.map(min => {
-                  const isHighlighted = highlightedSlot?.staffId === staffId && highlightedSlot?.min === min;
-                  return (
-                    <div key={min} style={{ height: SLOT_HEIGHT }}
-                      className={`cursor-pointer transition-colors group relative
-                        ${min % 60 === 0 ? "border-b border-border/40" : "border-b border-transparent"}
-                        ${isHighlighted ? "bg-primary/15 ring-1 ring-inset ring-primary/40" : "hover:bg-primary/5"}`}
-                      onClick={() => handleSlotClick(staffId, min)}
-                    >
-                      {isHighlighted && (
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <Plus className="w-4 h-4 text-primary/50" />
-                        </div>
-                      )}
-                      {!isHighlighted && (
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity h-full flex items-center justify-center">
-                          <Plus className="w-3.5 h-3.5 text-primary/30" />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+              <div key={staffId} className="flex border-b border-border/20" style={{ minHeight: ROW_H }}>
+                {/* Staff name cell — sticky on the left */}
+                <div
+                  style={{ width: NAME_COL_W, minWidth: NAME_COL_W }}
+                  className="shrink-0 border-r border-border/40 bg-muted/20 flex flex-col justify-center px-3 py-2 sticky left-0 z-10"
+                >
+                  <p className="text-sm font-bold text-foreground leading-tight truncate">{s.name}</p>
+                  <span className="text-[11px] text-muted-foreground font-medium mt-0.5">
+                    {count > 0 ? `${count} appt${count !== 1 ? "s" : ""}` : "No appointments"}
+                  </span>
+                </div>
 
-                {/* Appointment blocks — with overlap-aware layout */}
-                {(() => {
-                  const visibleAppts = staffAppts.filter(a => {
-                    const m = timeToMinutes(a.appointmentTime);
-                    return m >= CAL_START && m < CAL_END;
-                  });
-                  const overlapLayout = layoutOverlappingAppts(visibleAppts);
-                  return visibleAppts.map(appt => {
-                    const apptMin = timeToMinutes(appt.appointmentTime);
-                    const slotStart = Math.floor(apptMin / 60) * 60;
-                    const apptEnd   = apptMin + (appt.duration || 30);
-                    const slotEnd   = Math.ceil(apptEnd / 60) * 60;
-                    const top    = ((slotStart - CAL_START) / 30) * SLOT_HEIGHT;
-                    const height = Math.max(((slotEnd - slotStart) / 30) * SLOT_HEIGHT, SLOT_HEIGHT * 2);
-                    const pos = overlapLayout.get(appt.id || appt._id);
+                {/* Time slots for this staff — horizontal track */}
+                <div className="relative flex shrink-0" style={{ width: totalTimeWidth, height: ROW_H }}>
+                  {/* Clickable slot cells */}
+                  {slots.map(min => {
+                    const isHighlighted = highlightedSlot?.staffId === staffId && highlightedSlot?.min === min;
+                    const isHour = min % 60 === 0;
                     return (
-                      <CalendarApptBlock
+                      <div key={min}
+                        style={{ width: SLOT_W, minWidth: SLOT_W, height: ROW_H }}
+                        className={`cursor-pointer transition-colors group relative shrink-0
+                          ${isHour ? "border-r border-border/40" : "border-r border-dashed border-border/20"}
+                          ${isHighlighted ? "bg-primary/15 ring-1 ring-inset ring-primary/40" : "hover:bg-primary/5"}`}
+                        onClick={() => handleSlotClick(staffId, min)}
+                      >
+                        {isHighlighted && (
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <Plus className="w-4 h-4 text-primary/50" />
+                          </div>
+                        )}
+                        {!isHighlighted && (
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity h-full flex items-center justify-center">
+                            <Plus className="w-3.5 h-3.5 text-primary/30" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Appointment blocks */}
+                  {visibleAppts.map(appt => {
+                    const apptMin  = timeToMinutes(appt.appointmentTime);
+                    const leftPx   = ((apptMin - CAL_START) / 30) * SLOT_W;
+                    const widthPx  = Math.max(((appt.duration || 30) / 30) * SLOT_W, SLOT_W);
+                    const pos      = overlapLayout.get(appt.id || appt._id);
+                    return (
+                      <HCalendarApptBlock
                         key={appt.id || appt._id}
-                        appt={appt} top={top} height={height}
-                        colLeft={pos?.left} colWidth={pos?.width}
-                        onEdit={onEdit} onDelete={onDelete} onStatusChange={onStatusChange} onView={onView}
+                        appt={appt}
+                        leftPx={leftPx}
+                        widthPx={widthPx}
+                        topStyle={pos?.top ?? "2px"}
+                        heightStyle={pos?.height ?? `calc(100% - 4px)`}
+                        onEdit={onEdit} onDelete={onDelete}
+                        onStatusChange={onStatusChange} onView={onView}
                       />
                     );
-                  });
-                })()}
+                  })}
+                </div>
               </div>
             );
           })}
